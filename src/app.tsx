@@ -547,8 +547,8 @@ const App = memo(() => {
 
     const graph = new StateGraph(State)
         .addNode("mockllm", mockllm, { ends: [END, "filtertool"] })
-        .addNode("filtertool", filtertool, { ends: [END, "toolExecuter", "getPermision"] })
-        .addNode("getPermision", getPermision, { ends: [END, "toolExecuter"] })
+        .addNode("filtertool", filtertool, { ends: [END, "toolExecuter", "getPermission"] })
+        .addNode("getPermission", getPermision, { ends: [END, "toolExecuter"] })
         .addNode("toolExecuter", toolExecuter, { ends: [END, "mockllm"] })
         .addEdge(START, "mockllm")
         .compile({ checkpointer });
