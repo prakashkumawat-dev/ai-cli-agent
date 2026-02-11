@@ -96,7 +96,7 @@ export const read_File = tool(async ({ filePath }) => {
             return `${index + 1} | ${line}`;
         }).join('\n');
 
-        return JSON.stringify(numbereddata);
+        return numbereddata;
 
     } catch (error) {
         if (error instanceof Error) {

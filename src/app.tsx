@@ -13,6 +13,7 @@ import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { SYSTEM_PROMPT1 } from './agent/system.js';
 import { install_dependency, write_File, create_directory_and_files, list_directory, append_File, web_search, edit_file, read_File, read_logs, delete_in_file, search_in_file } from './agent/tool.js';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
+import MessagesList from './messageslist.js';
 
 interface Size {
     height: number,
@@ -517,7 +518,7 @@ const App = memo(() => {
                 }
                 const toolsresponce = await (invoketools as any)[element.name].invoke(element.args);
                 ToolOutput.push(new ToolMessage({ name: element.name, tool_call_id: element.id, content: toolsresponce }));
-                
+
                 if (size.height !== undefined) {
                     setSize(prev => ({ ...prev, height: undefined }));
                 }
@@ -571,12 +572,6 @@ const App = memo(() => {
             value: ToolCall
         }[]
     }
-
-    // type Interrupt_type = {
-    //     __interrupt__: {
-    //         value: ToolCall
-    //     }[]
-    // }
 
     interface CUSTOM {
         toolCancled: Grant[],
@@ -712,36 +707,7 @@ const App = memo(() => {
 
             {/* chatmessages list */}
 
-            {Messages.shouldshow && <Box width={"100%"} flexDirection="column">
-                {Messages?.message?.map((value, index) => {
-                    switch (value.type) {
-                        case "human":
-                            {
-                                return (<Box paddingLeft={1} paddingRight={1} key={`${index}msgOfagent`} gap={1} flexDirection="column" borderStyle={"round"} borderColor={"gray"}>
-                                    <Text wrap="wrap">🙍 human input</Text>
-                                    <Text color={"gray"} wrap="wrap">{value.message.toString()}</Text>
-                                </Box>)
-                            }
-                        case "llm":
-                            {
-                                return (<Box paddingLeft={1} paddingRight={1} key={`${index}msgOfagent`} gap={1} flexDirection="column" borderStyle={"round"} borderColor={"green"}>
-                                    <Text wrap="wrap">✨ llm output</Text>
-                                    <Text color={"gray"} wrap="wrap">{value.message.toString()}</Text>
-                                </Box>)
-                            }
-                        case "tool":
-                            {
-                                return (<Box paddingLeft={1} paddingRight={1} key={`${index}msgOfagent`} gap={1} flexDirection="column" borderStyle={"round"} borderColor={"#fd7303"}>
-                                    <Text wrap="wrap">{`⛏️  tool output`} <Text wrap="wrap" color={"gray"}>{`(${value.toolname})`}</Text></Text>
-                                    <Text>with args: <Text wrap="truncate-end" color={"gray"}>{value.toolargs}</Text></Text>
-                                    <Text wrap="wrap">{value.message.toString()}</Text>
-                                </Box>)
-                            }
-                        default:
-                            break;
-                    }
-                })}
-            </Box>}
+            {Messages.shouldshow && <MessagesList list={Messages} />}
 
             {/* get api keys from user */}
             {promiseApi.shouldshow && < Box width={"100%"} borderStyle={"round"} flexDirection='column' borderColor={"gray"} >
