@@ -615,8 +615,6 @@ const App = memo(() => {
 
             const persistancestate = await graph.getState(config);
 
-            SetInfoMessage({ message: `${JSON.stringify(persistancestate.values)}`, shouldshow: true, type: "warning" });
-
             if (persistancestate.values.messageList) {
                 input = { messageList: [...persistancestate.values.messageList, new HumanMessage(trimedInput)] };
             };

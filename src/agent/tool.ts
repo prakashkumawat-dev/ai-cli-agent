@@ -264,15 +264,15 @@ export const install_dependency = tool(
     },
     {
         name: "install_dependency",
-        description: `Installs project dependencies (e.g., npm i express, npm create vite@latest).
+        description: `Installs project dependencies.
 
                Do NOT run any CLI command that requires interactive prompts. Only execute fully non-interactive(in which there is not human interaction) commands with all required flags.
 
                If a command is interactive, convert it into a non-interactive version with complete flags before running.
 
-               You may install multiple packages at once by providing a single bulk install command (recommended).`,
+               You may install multiple packages at once by providing a single bulk install command (recommended). but according operating system and with safe manor.`,
         schema: z.object({
-            command: z.string().describe("full command of the  dependecys."),
+            command: z.string().describe("command for installing the  dependecys."),
             dirPath: z.string().optional().describe("relative path of directory in which have to install dependency. this is optional and default is current working directory.")
         })
     }
@@ -640,7 +640,7 @@ export const create_directory_and_files = tool(
             }
         }
 
-        return results;
+        return `Succsesfully created given files or directoryes`;
     },
     {
         name: "create_directory_and_files",

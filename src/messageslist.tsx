@@ -38,7 +38,7 @@ const MessagesList = memo(({ list }: { list: MSG }) => {
                             return (<Box paddingLeft={1} paddingRight={1} key={`${index}msgOfagent`} gap={1} flexDirection="column" borderStyle={"round"} borderColor={"#fd7303"}>
                                 <Text wrap="wrap">{`⛏️  tool output`} <Text wrap="wrap" color={"gray"}>{`(${value.toolname})`}</Text></Text>
                                 <Text>with args: <Text wrap="truncate-end" color={"gray"}>{value.toolargs}</Text></Text>
-                                <Text wrap="wrap">{value.message.toString()}</Text>
+                                <Text wrap="wrap">{value.message}</Text>
                             </Box>)
                         }
                     default:
