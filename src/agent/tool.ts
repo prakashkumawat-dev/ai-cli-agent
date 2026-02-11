@@ -81,7 +81,8 @@ export const read_File = tool(async ({ filePath }) => {
 
         if (!absolutepath) {
             return Error
-        }
+        };
+
         const { exsist, isError } = await isFileExsist(absolutepath);
         if (!exsist) {
             return `Error occurred: ${isError}`
@@ -95,7 +96,8 @@ export const read_File = tool(async ({ filePath }) => {
             return `${index + 1} | ${line}`;
         }).join('\n');
 
-        return numbereddata;
+        return JSON.stringify(numbereddata);
+
     } catch (error) {
         if (error instanceof Error) {
             return JSON.stringify({

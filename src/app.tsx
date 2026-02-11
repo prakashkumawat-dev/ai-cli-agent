@@ -67,11 +67,13 @@ type MessageTypes = {
     toolargs?: string,
 }
 
-
 interface MSG {
     shouldshow: boolean
     message?: MessageTypes[]
 };
+
+const checkpointer = new MemorySaver();
+const config = { configurable: { thread_id: "thread-1" } };
 
 const App = memo(() => {
     const [size, setSize] = useState<{ height: number | string | undefined, width: number | string | undefined }>({ height: undefined, width: "100%" });
@@ -515,6 +517,7 @@ const App = memo(() => {
                 }
                 const toolsresponce = await (invoketools as any)[element.name].invoke(element.args);
                 ToolOutput.push(new ToolMessage({ name: element.name, tool_call_id: element.id, content: toolsresponce }));
+                
                 if (size.height !== undefined) {
                     setSize(prev => ({ ...prev, height: undefined }));
                 }
@@ -541,9 +544,6 @@ const App = memo(() => {
             }
         }
     };
-
-    const checkpointer = new MemorySaver();
-    const config = { configurable: { thread_id: "thread-1" } };
 
     const graph = new StateGraph(State)
         .addNode("mockllm", mockllm, { ends: [END, "filtertool"] })
@@ -572,11 +572,11 @@ const App = memo(() => {
         }[]
     }
 
-    type Interrupt_type = {
-        __interrupt__: {
-            value: ToolCall
-        }[]
-    }
+    // type Interrupt_type = {
+    //     __interrupt__: {
+    //         value: ToolCall
+    //     }[]
+    // }
 
     interface CUSTOM {
         toolCancled: Grant[],
@@ -586,11 +586,14 @@ const App = memo(() => {
 
     type chunk_type = ["updates", UPDATE] | ["custom", CUSTOM]
 
+    // ----------------- invocation of graph---------------------
     const invoke = async (userinput: string) => {
+
         const trimedInput = userinput.trim();
 
         if (trimedInput?.toLowerCase() === "exit") {
             exit();
+            return;
         };
 
         if (trimedInput) {
@@ -612,14 +615,20 @@ const App = memo(() => {
                 shouldshow: true
             }));
 
+            // input message for agent--
             let input: any = { messageList: [new SystemMessage(SYSTEM_PROMPT1), new HumanMessage(trimedInput)] };
+
             const persistancestate = await graph.getState(config);
+
+            SetInfoMessage({ message: `${JSON.stringify(persistancestate.values)}`, shouldshow: true, type: "warning" });
 
             if (persistancestate.values.messageList) {
                 input = { messageList: [...persistancestate.values.messageList, new HumanMessage(trimedInput)] };
             };
 
+            // while loop started
             while (true) {
+
                 const stream = await graph.stream(input, {
                     streamMode: ["updates", "custom"],
                     ...config
