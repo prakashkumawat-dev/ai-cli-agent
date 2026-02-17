@@ -3,8 +3,6 @@ import { Box, Text, useStdout, Newline, useApp, useInput, measureElement } from 
 import { StateGraph, Command, interrupt, END, START, MemorySaver } from '@langchain/langgraph';
 import type { LangGraphRunnableConfig } from '@langchain/langgraph'
 import { TextInput, PasswordInput, StatusMessage, Select, Spinner } from '@inkjs/ui';
-import Logo from './logo.js';
-import Info from './info.js';
 import z from 'zod';
 import os from 'node:os';
 import path from 'node:path';
@@ -14,6 +12,7 @@ import { SYSTEM_PROMPT1 } from './agent/system.js';
 import { install_dependency, write_File, create_directory_and_files, list_directory, append_File, web_search, edit_file, read_File, read_logs, delete_in_file, search_in_file } from './agent/tool.js';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
 import MessagesList from './messageslist.js';
+import { v4 as uuid } from 'uuid';
 
 interface Size {
     height: number,
@@ -62,28 +61,29 @@ interface STATUS {
 type Store = "allow" | "cancle" | "session";
 
 type MessageTypes = {
-    type: "human" | "llm" | "tool",
+    id: string,
+    type: "human" | "llm" | "tool" | "logo" | "description",
     message: string,
     toolname?: string,
     toolargs?: string,
 }
 
 interface MSG {
-    shouldshow: boolean
-    message?: MessageTypes[]
+    id: string
+    message: MessageTypes[]
 };
 
 const checkpointer = new MemorySaver();
 const config = { configurable: { thread_id: "thread-1" } };
 
 const App = memo(() => {
-    const [size, setSize] = useState<{ height: number | string | undefined, width: number | string | undefined }>({ height: undefined, width: "100%" });
+    const [size, setSize] = useState<{ height: number | string, width: number | string }>({ height: "100%", width: "100%" });
     const [promiseApi, SetpromiseApi] = useState<STATE>({ shouldshow: false, index: 0, keynames: [] });
     const [InfoMessage, SetInfoMessage] = useState<InfoType>({ shouldshow: false, message: "info", type: "info" });
     const [Tokens, setTokens] = useState<number>(0);
     const [ToolPermissions, SetToolPermissions] = useState<TOOLPER>({ index: 0, shouldshow: false, toolinfo: [] });
     const [Status, setStatus] = useState<STATUS>({ shouldshow: false, message: "Thinking..." });
-    const [Messages, setMessages] = useState<MSG>({ shouldshow: false });
+    const [Messages, setMessages] = useState<MSG>({ id: "erd", message: [{ id: "Lo8gheMuf", message: "hello", type: "logo" }, { id: "De8sn$", type: "description", message: "build websites,debug your code,test your app,press ctrl + x for exit" }] });
     const [ShowInputBox, setShowInputBox] = useState<boolean>(true);
 
 
@@ -100,28 +100,24 @@ const App = memo(() => {
         if (key.ctrl && input === 'c') exit()
     });
 
-
     // ------------ handling terminal size --------------
 
     useEffect(() => {
-        function initial() {
-            setSize({ height: stdout.rows, width: stdout.columns });
-        }
-        initial();
+        let timeout: any = null;
 
-        function updatesize() {
-            const { height } = measureElement(firstRef.current);
-            const terminalHeight = stdout.rows;
-            const terminalwidth = stdout.columns;
-            if (height < terminalHeight) {
-                setSize({ height: terminalHeight, width: terminalwidth });
-            } else {
-                setSize({ height: height, width: terminalwidth });
-            }
-        }
+        const updatesize = () => {
+            if (timeout) {
+                clearTimeout(timeout);
+            };
+
+            timeout = setTimeout(() => {
+                process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+                setSize({ width: stdout.columns, height: stdout.rows });
+                setMessages(prev => ({ id: uuid(), message: [...prev.message] }));
+            }, 500);
+        };
 
         stdout.on('resize', updatesize);
-
         return () => {
             stdout.off('resize', updatesize);
         }
@@ -161,18 +157,18 @@ const App = memo(() => {
     const apisubmit = (value: string) => {
         if (promiseApi.index < promiseApi.keynames?.length - 1) {
             apiRef.current.push(value);
-            if (size.height !== undefined) {
-                setSize(prev => ({ ...prev, height: undefined }));
-            }
+            // if (size.height !== undefined) {
+            //     setSize(prev => ({ ...prev, height: undefined }));
+            // }
             SetpromiseApi(prev => ({ ...prev, index: prev.index + 1 }));
         }
         else {
             if (promiseApi.index == promiseApi.keynames?.length - 1) {
                 apiRef.current.push(value);
                 promiseApi.resolve(apiRef.current);
-                if (size.height !== undefined) {
-                    setSize(prev => ({ ...prev, height: undefined }));
-                }
+                // if (size.height !== undefined) {
+                //     setSize(prev => ({ ...prev, height: undefined }));
+                // }
                 SetpromiseApi({ shouldshow: false, keynames: [], index: 0, resolve: null });
                 apiRef.current = [];
             }
@@ -184,18 +180,18 @@ const App = memo(() => {
         if (ToolPermissions.index < ToolPermissions.toolinfo.length - 1) {
             const obj: Grant = { permission: value, toolName: (ToolPermissions.toolinfo[ToolPermissions.index] as tooltype).name };
             storeRef.current.push(obj);
-            if (size.height !== undefined) {
-                setSize(prev => ({ ...prev, height: undefined }));
-            }
+            // if (size.height !== undefined) {
+            //     setSize(prev => ({ ...prev, height: undefined }));
+            // }
             SetToolPermissions(prev => ({ ...prev, index: prev.index + 1 }));
         } else {
             if (ToolPermissions.index == ToolPermissions.toolinfo.length - 1) {
                 const obj: Grant = { permission: value, toolName: (ToolPermissions.toolinfo[ToolPermissions.index] as tooltype).name };
                 storeRef.current.push(obj);
                 ToolPermissions.resolve(storeRef.current);
-                if (size.height !== undefined) {
-                    setSize(prev => ({ ...prev, height: undefined }));
-                }
+                // if (size.height !== undefined) {
+                //     setSize(prev => ({ ...prev, height: undefined }));
+                // }
                 SetToolPermissions({ index: 0, shouldshow: false, toolinfo: [], resolve: null });
                 storeRef.current = [];
             }
@@ -206,18 +202,18 @@ const App = memo(() => {
 
     const showinput = (query: string[]): Promise<string[]> => {
         return new Promise((resolve, reject) => {
-            if (size.height !== undefined) {
-                setSize(prev => ({ ...prev, height: undefined }));
-            }
+            // if (size.height !== undefined) {
+            //     setSize(prev => ({ ...prev, height: undefined }));
+            // }
             SetpromiseApi(prev => ({ ...prev, shouldshow: true, keynames: query, resolve }))
         });
     };
 
     const getPermissions = (tools: tooltype[]) => {
         return new Promise((resolve, reject) => {
-            if (size.height !== undefined) {
-                setSize(prev => ({ ...prev, height: undefined }));
-            }
+            // if (size.height !== undefined) {
+            //     setSize(prev => ({ ...prev, height: undefined }));
+            // }
             SetToolPermissions(prev => ({ ...prev, shouldshow: true, resolve, toolinfo: tools }))
         })
     };
@@ -326,9 +322,9 @@ const App = memo(() => {
 
                 const responce = await chatllm.invoke([...state.messageList]);
 
-                if (size.height !== undefined) {
-                    setSize(prev => ({ ...prev, height: undefined }));
-                };
+                // if (size.height !== undefined) {
+                //     setSize(prev => ({ ...prev, height: undefined }));
+                // };
 
                 SetInfoMessage({ message: `ai gave responce from if block`, shouldshow: true, type: "info" });
 
@@ -357,9 +353,9 @@ const App = memo(() => {
 
                     const responce = await chatllm.invoke([...state.messageList]);
 
-                    if (size.height !== undefined) {
-                        setSize(prev => ({ ...prev, height: undefined }));
-                    };
+                    // if (size.height !== undefined) {
+                    //     setSize(prev => ({ ...prev, height: undefined }));
+                    // };
 
                     SetInfoMessage({ message: `ai gave responce from else block`, shouldshow: true, type: "info" });
 
@@ -403,9 +399,9 @@ const App = memo(() => {
 
     const filtertool = async (state: z.infer<typeof State>) => {
         try {
-            if (size.height !== undefined) {
-                setSize(prev => ({ ...prev, height: undefined }));
-            };
+            // if (size.height !== undefined) {
+            //     setSize(prev => ({ ...prev, height: undefined }));
+            // };
             SetInfoMessage({ message: `⛏️ i am from filtertool NODE`, shouldshow: true, type: "info" });
             const lastmsg = state.messageList[state.messageList.length - 1];
             const toollist: ToolCall[] = lastmsg.tool_calls;
@@ -461,9 +457,9 @@ const App = memo(() => {
         const permissionsOfUsers: Grant[] = interrupt(state.requiredToolsForPermision);
 
         try {
-            if (size.height !== undefined) {
-                setSize(prev => ({ ...prev, height: undefined }));
-            };
+            // if (size.height !== undefined) {
+            //     setSize(prev => ({ ...prev, height: undefined }));
+            // };
             SetInfoMessage({ message: `i am from getpermission NODE`, shouldshow: true, type: "info" });
             const allowed_tools_for_this_session: string[] = [];
             const cancled_tools = [];
@@ -505,9 +501,9 @@ const App = memo(() => {
 
     const toolExecuter = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
         try {
-            if (size.height !== undefined) {
-                setSize(prev => ({ ...prev, height: undefined }));
-            };
+            // if (size.height !== undefined) {
+            //     setSize(prev => ({ ...prev, height: undefined }));
+            // };
             SetInfoMessage({ message: `iam from toolExecuter NODE`, shouldshow: true, type: "info" });
             const lastmsg = state.messageList[state.messageList.length - 1];
             const toollist: ToolCall[] = lastmsg.tool_calls;
@@ -519,20 +515,21 @@ const App = memo(() => {
                 const toolsresponce = await (invoketools as any)[element.name].invoke(element.args);
                 ToolOutput.push(new ToolMessage({ name: element.name, tool_call_id: element.id, content: toolsresponce }));
 
-                if (size.height !== undefined) {
-                    setSize(prev => ({ ...prev, height: undefined }));
-                }
+                // if (size.height !== undefined) {
+                //     setSize(prev => ({ ...prev, height: undefined }));
+                // }
                 setMessages(prev => ({
+                    ...prev,
                     message: [
                         ...(prev.message ?? []),
                         {
+                            id: uuid(),
                             type: "tool",
                             toolargs: JSON.stringify(element.args),
                             toolname: element.name,
                             message: toolsresponce
                         }
                     ],
-                    shouldshow: true
                 }));
             };
 
@@ -592,22 +589,23 @@ const App = memo(() => {
         };
 
         if (trimedInput) {
-            if (size.height !== undefined) {
-                setSize(prev => ({ ...prev, height: undefined }));
-            };
+            // if (size.height !== undefined) {
+            //     setSize(prev => ({ ...prev, height: undefined }));
+            // };
 
             setStatus(prev => ({ ...prev, shouldshow: true }));
             setShowInputBox(false);
             setMessages(prev => ({
+                ...prev,
                 message: [
                     ...(prev.message ?? []), // 👈 old messages
                     {
                         type: "human",
                         message: trimedInput.toString(),
+                        id: uuid()
 
                     }
                 ],
-                shouldshow: true
             }));
 
             // input message for agent--
@@ -637,15 +635,15 @@ const App = memo(() => {
                             setTokens(prev => prev + value.tokenUsed);
                         }
                         if (value.status && "status" in value) {
-                            if (size.height !== undefined) {
-                                setSize(prev => ({ ...prev, height: undefined }));
-                            }
+                            // if (size.height !== undefined) {
+                            //     setSize(prev => ({ ...prev, height: undefined }));
+                            // }
                             setStatus(prev => ({ ...prev, message: value.status }));
                         }
                         if (value.toolCancled && "toolCancled" in value) {
-                            if (size.height !== undefined) {
-                                setSize(prev => ({ ...prev, height: undefined }));
-                            }
+                            // if (size.height !== undefined) {
+                            //     setSize(prev => ({ ...prev, height: undefined }));
+                            // }
                             SetInfoMessage({ message: JSON.stringify({ cancled_tools: value.toolCancled }), shouldshow: true, type: "info" })
                         }
                     } else {
@@ -658,28 +656,28 @@ const App = memo(() => {
                             for (const [feild, obj_value] of Object.entries(value)) {
                                 if ("finalResponce" in obj_value) {
 
-                                    if (size.height !== undefined) {
-                                        setSize(prev => ({ ...prev, height: undefined }));
-                                    }
+                                    // if (size.height !== undefined) {
+                                    //     setSize(prev => ({ ...prev, height: undefined }));
+                                    // }
 
                                     setMessages(prev => ({
+                                        ...prev,
                                         message: [
                                             ...(prev.message ?? []),
                                             {
                                                 type: "llm",
                                                 message: obj_value.finalResponce.toString(),
-
+                                                id: uuid()
                                             }
                                         ],
-                                        shouldshow: true
                                     }));
                                     setStatus({ shouldshow: false, message: "Thinking..." });
                                     setShowInputBox(true);
                                 }
                                 if ("errorLogs" in obj_value) {
-                                    if (size.height !== undefined) {
-                                        setSize(prev => ({ ...prev, height: undefined }));
-                                    }
+                                    // if (size.height !== undefined) {
+                                    //     setSize(prev => ({ ...prev, height: undefined }));
+                                    // }
                                     SetInfoMessage({ message: obj_value.errorLogs, shouldshow: true, type: "error" });
                                     setStatus({ shouldshow: false, message: "Thinking..." });
                                     exit();
@@ -695,79 +693,67 @@ const App = memo(() => {
         };
     };
 
-    return (
-        <Box ref={firstRef} height={size.height} width={size.width} flexDirection="column" borderColor={'rgba(255, 102, 0, 1)'}>
-            {/* logo of the app */}
-            <Logo />
-
-            {/* basic info about cli ai agent */}
-            <Info />
-
-            {/* chatmessages list */}
-
-            {Messages.shouldshow && <MessagesList list={Messages} />}
-
-            {/* get api keys from user */}
-            {promiseApi.shouldshow && < Box width={"100%"} borderStyle={"round"} flexDirection='column' borderColor={"gray"} >
-                <Box gap={1} paddingLeft={1} paddingRight={1} flexDirection='column'>
-                    <Text>Set the following api keys</Text>
-                    <Box flexDirection='column'>
-                        <Text>{`${promiseApi.index + 1}. ${promiseApi.keynames[promiseApi.index]}`}</Text>
-                        <Box borderColor={"#ff8204"} borderStyle={'round'}>
-                            <PasswordInput isDisabled={!promiseApi.shouldshow} placeholder={`${promiseApi.keynames[promiseApi.index]}`} key={`${promiseApi.index}PaasW`} onSubmit={(value) => apisubmit(value)} />
-                        </Box>
+    return (<>
+        <MessagesList Size={size} list={Messages} />
+        {/* get api keys from user */}
+        {promiseApi.shouldshow && < Box width={size.width} borderStyle={"round"} flexDirection='column' borderColor={"gray"} >
+            <Box gap={1} paddingLeft={1} paddingRight={1} flexDirection='column'>
+                <Text>Set the following api keys</Text>
+                <Box flexDirection='column'>
+                    <Text>{`${promiseApi.index + 1}. ${promiseApi.keynames[promiseApi.index]}`}</Text>
+                    <Box borderColor={"#ff8204"} borderStyle={'round'}>
+                        <PasswordInput isDisabled={!promiseApi.shouldshow} placeholder={`${promiseApi.keynames[promiseApi.index]}`} key={`${promiseApi.index}PaasW`} onSubmit={(value) => apisubmit(value)} />
                     </Box>
                 </Box>
-            </Box >
-            }
-
-            {/* get tool permission to user */}
-            {ToolPermissions.shouldshow && <Box width={"100%"} flexDirection="column" gap={1} paddingLeft={1} paddingRight={1} borderColor={"gray"} borderStyle={"round"}>
-                <Box flexDirection="column">
-                    <Text wrap="wrap">Do you allow to procced the Tool <Text bold={true}>{ToolPermissions.toolinfo[ToolPermissions.index]?.name} ❔</Text> </Text>
-                    <Text color={"gray"} wrap="truncate-end">args: {JSON.stringify(ToolPermissions.toolinfo[ToolPermissions.index]?.args)}</Text>
-                </Box>
-                <Select options={[
-                    { label: "allow for this time", value: "allow" },
-                    { label: "allow for this session", value: "session" },
-                    { label: "cancle", value: "cancle" }
-                ]} key={`${ToolPermissions.index}Swlct`} onChange={(value) => { handelUserPermission(value as Store) }} />
             </Box>
-            }
+        </Box >
+        }
 
-            {/* info message */}
-            {InfoMessage.shouldshow &&
-                <Box key={"gotLefser345"} width={"100%"} flexDirection='column' borderColor={InfoMessage.type == "error" ? "#ff0000" : InfoMessage.type == "info" ? "cyan" : InfoMessage.type == "success" ? "green" : "yellow"} borderStyle={'round'} paddingLeft={1} paddingRight={1} gap={1}>
-                    <StatusMessage variant={InfoMessage.type}>
-                        {InfoMessage.type}
-                    </StatusMessage>
-                    <Text key={"somw2dasd34asert"} color={"gray"} wrap="wrap">{InfoMessage.message}</Text>
-                </Box>
-            }
-            {/* status spinner */}
-
-            {Status.shouldshow && <Box width={"100%"} paddingLeft={1} flexDirection='column' >
-                {/* <Spinner key={"spinner"} label={Status.message} type='dots14' /> */}
-                <Text wrap='wrap' color={"cyan"}>{Status.message}</Text>
+        {/* get tool permission to user */}
+        {ToolPermissions.shouldshow && <Box width={size.width} flexDirection="column" gap={1} paddingLeft={1} paddingRight={1} borderColor={"gray"} borderStyle={"round"}>
+            <Box flexDirection="column">
+                <Text wrap="wrap">Do you allow to procced the Tool <Text bold={true}>{ToolPermissions.toolinfo[ToolPermissions.index]?.name} ❔</Text> </Text>
+                <Text color={"gray"} wrap="truncate-end">args: {JSON.stringify(ToolPermissions.toolinfo[ToolPermissions.index]?.args)}</Text>
             </Box>
-            }
-
-            {/* input box */}
-
-            {ShowInputBox && <Box width={'100%'} paddingLeft={1} borderStyle={'round'} borderColor={'#ff6a00ff'}>
-                <Text color={'green'} wrap='wrap'>{`> `}</Text>
-                <TextInput key={"GOtfw98fe5t3"} isDisabled={!ShowInputBox} placeholder='what would you like to build?' onSubmit={(input) => invoke(input)} />
-            </Box>
-            }
-
-            {/* <Count /> */}
-            <Box justifyContent="flex-end" paddingRight={1}>
-                <Text>
-                    Token used: <Text color="cyan">{Tokens.toString()}</Text>
-                </Text>
-            </Box>
+            <Select options={[
+                { label: "allow for this time", value: "allow" },
+                { label: "allow for this session", value: "session" },
+                { label: "cancle", value: "cancle" }
+            ]} key={`${ToolPermissions.index}Swlct`} onChange={(value) => { handelUserPermission(value as Store) }} />
         </Box>
-    );
+        }
+
+        {/* info message */}
+        {InfoMessage.shouldshow &&
+            <Box key={"gotLefser345"} width={size.width} flexDirection='column' borderColor={InfoMessage.type == "error" ? "#ff0000" : InfoMessage.type == "info" ? "cyan" : InfoMessage.type == "success" ? "green" : "yellow"} borderStyle={'round'} paddingLeft={1} paddingRight={1} gap={1}>
+                <StatusMessage variant={InfoMessage.type}>
+                    {InfoMessage.type}
+                </StatusMessage>
+                <Text key={"somw2dasd34asert"} color={"gray"} wrap="wrap">{InfoMessage.message}</Text>
+            </Box>
+        }
+        {/* status spinner */}
+
+        {Status.shouldshow && <Box width={size.width} paddingLeft={1} flexDirection='column' >
+            <Spinner key={"spinner"} label={Status.message} type='dots14' />
+        </Box>
+        }
+
+        {/* input box */}
+
+        {ShowInputBox && <Box width={size.width} paddingLeft={1} borderStyle={'round'} borderColor={'#ff6a00ff'}>
+            <Text color={'green'} wrap='wrap'>{`> `}</Text>
+            <TextInput key={"GOtfw98fe5t3"} isDisabled={!ShowInputBox} placeholder='what would you like to build?' onSubmit={(input) => invoke(input)} />
+        </Box>
+        }
+
+        {/* <Count /> */}
+        <Box width={size.width} justifyContent="flex-end" paddingRight={1}>
+            <Text>
+                Token used: <Text color="cyan">{Tokens.toString()}</Text>
+            </Text>
+        </Box>
+    </>);
 });
 
 export default App;
