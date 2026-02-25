@@ -613,6 +613,7 @@ Use this tool when:
 - When running scripts to install project dependencies, always use non-interactive flags. This ensures no human confirmation or input is required, as this tool is optimized to run commands in a non-interactive manner.
 - Never run harmful commands.
 - do not use this for read and write file , and all those commands that returns the long stdout.
+- Always install or run dependencies using the appropriate package manager. If none is specified or cannot be determined, default to npm.
 - always run commands according the **About system**
 
 ## Examples

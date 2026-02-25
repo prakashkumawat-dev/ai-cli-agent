@@ -279,7 +279,7 @@ const App = memo(() => {
         "read_File": read_File,
         "edit_file": edit_file,
         "set_api_keys": set_api_keys,
-        "run_shell_command": "run_shell_command"
+        "run_shell_command": run_shell_command
     };
 
     // ----------------------Graph creation-----------------------
