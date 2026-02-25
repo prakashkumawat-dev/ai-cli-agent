@@ -2,15 +2,34 @@ import { tool } from "@langchain/core/tools";
 import z from 'zod';
 import process from 'node:process';
 import fs from 'node:fs';
-import { promisify } from "node:util";
 import path from "node:path";
-// import { password } from "@inquirer/prompts";
-import { spawn, exec } from 'node:child_process';
-import os from 'node:os';
+import { spawn } from 'node:child_process';
 import stripAnsi from 'strip-ansi';
 import { tavily } from '@tavily/core';
+import kill from 'tree-kill';
 
-const execPromise = promisify(exec);
+const patterns = [
+    /are you sure/i,
+    /do you want/i,
+    /continue\?/i,
+    /proceed\?/i,
+    /\(\s*y\s*\/\s*n\s*\)/i,
+    /press enter/i,
+    /press any key/i,
+    /select/i,
+    /choose/i,
+    /project name/i,
+    /package name/i,
+    /\?\s*$/,
+    /\(\s*yes\s*\/\s*no\s*\)/i
+];
+
+interface PID {
+    process_id: number,
+    working_directory: string | undefined,
+    shell_command: string
+};
+let processID: PID[] = [];
 
 const saftyPath = (dirPath: string) => {
     try {
@@ -51,18 +70,7 @@ const isFileExsist = async (filepath: string) => {
     };
 };
 
-// ✅
-export const show_present_working_Directory = tool(
-    () => {
-        return process.cwd();
-    },
-    {
-        name: "show_present_working_Directory",
-        description: "this tool returns the current working directory",
-    }
-);
 
-// ✅
 export const read_File = tool(async ({ filePath }) => {
     try {
         if (!filePath) {
@@ -230,58 +238,8 @@ export const append_File = tool(
     }
 );
 
-// console.log(await append_File.invoke({ filePath: "index.txt", content: "\n hello my name is prakash" }));
-
-// ✅
-export const install_dependency = tool(
-    async ({ command }) => {
-        try {
-            if (!command) {
-                return `command is not provided please provide command to execute`
-            }
-            const { stderr, stdout } = await execPromise(command);
-            if (stderr && stdout) {
-                return `${stdout} ,\n ${stderr}`
-            } else if (stderr) {
-                return `occurred: ${stderr}`
-            } else {
-                if (stdout) {
-                    return stdout
-                } else {
-                    return `command executed succsesfully.`
-                }
-            };
-        } catch (error) {
-            if (error instanceof Error) {
-                return JSON.stringify({
-                    Error: error.message
-                });
-            };
-            return JSON.stringify({
-                Error: error
-            });
-        }
-    },
-    {
-        name: "install_dependency",
-        description: `Installs project dependencies.
-
-               Do NOT run any CLI command that requires interactive prompts. Only execute fully non-interactive(in which there is not human interaction) commands with all required flags.
-
-               If a command is interactive, convert it into a non-interactive version with complete flags before running.
-
-               You may install multiple packages at once by providing a single bulk install command (recommended). but according operating system and with safe manor.`,
-        schema: z.object({
-            command: z.string().describe("command for installing the  dependecys."),
-            dirPath: z.string().optional().describe("relative path of directory in which have to install dependency. this is optional and default is current working directory.")
-        })
-    }
-);
 
 
-// console.log(await install_dependency.invoke({ command: "npm create vite@latest" }));
-
-// ✅
 export const search_in_file = tool(
     async ({ filePath, startline, endline }) => {
         try {
@@ -510,255 +468,187 @@ export const edit_file = tool(
 //     };` }));
 
 // ✅
-export const list_directory = tool(
-    async ({ dirPath }) => {
-        try {
-            const isAllAbsolute: any = [];
-            if (dirPath == undefined || dirPath.length == 0 || dirPath == null) {
-                const current_direcory = process.cwd();
-
-                const files = await fs.promises.readdir(current_direcory, { withFileTypes: true });
-
-                const formatted = files.map(file => {
-                    return file.isDirectory() ? `[DIR]  ${file.name}` : `[FILE] ${file.name}`;
-                }).join("\n");
-
-                return JSON.stringify({ [path.basename(current_direcory)]: formatted });
-
-            } else {
-                dirPath.map((paths, index) => {
-                    const value = path.isAbsolute(paths);
-
-                    if (value) {
-                        isAllAbsolute.push(`index: ${index} , path: ${paths}`);
-                    }
-                });
-
-                if (isAllAbsolute.length > 0) {
-                    return `Error: Absolute paths are not allowed for security reasons. Please provide a relative paths for these list, ${isAllAbsolute}`;
-                };
-
-                let cleanPatharray = dirPath.map((value) => {
-                    return value.replace(/^[/\\]+/, '');
-                })
-
-                const normalizedPath = cleanPatharray.map((value) => {
-                    return path.normalize(value);
-                })
-
-                const absolutePath = normalizedPath.map((value) => {
-                    return path.resolve(process.cwd(), value)
-                });
-
-                const isAbsolutePathExsist = [];
-                const dirstructure = [];
-
-                for (const element of absolutePath) {
-                    const report = await isFileExsist(element);
-                    isAbsolutePathExsist.push(report);
-                }
-
-                for (const element of isAbsolutePathExsist) {
-                    if (element.isError) {
-                        const errorReport = isAbsolutePathExsist.map((value) => {
-                            return value.isError
-                        });
-                        return `ERROR occurred , ${errorReport}`;
-                    }
-                }
-
-                for (const element of absolutePath) {
-                    const structure = await fs.promises.readdir(element, { withFileTypes: true });
-                    dirstructure.push(structure);
-                }
-
-                const finalresult = dirstructure.map((value, index) => {
-                    return { [`${dirPath[index]}`]: value.map((DIR) => DIR.isDirectory() ? `[DIR]  ${DIR.name}` : `[FILE] ${DIR.name}`) }
-                })
-                return JSON.stringify(finalresult);
-            }
-
-        } catch (error) {
-            if (error instanceof Error) {
-                return JSON.stringify({
-                    Error: error.message
-                });
-            }
-            return JSON.stringify({
-                Error: error
-            });
-        }
-    },
-    {
-        name: "list_directory",
-        description: "Lists files and folders in the given directories so you can see the project structure. I do not accept file paths, so give me only directory paths.",
-        schema: z.object({
-            dirPath: z.array(z.string()).optional().describe("Array of directory paths to list. Default is current directory.")
-        }),
-    }
-);
-// console.log(await list_directory.invoke({dirPath:'src\\components'}));
-
-// ✅
-export const create_directory_and_files = tool(
-    async ({ list }: { list: string[] }) => {
-        if (!list || list.length === 0) {
-            return "Error: No directories or file paths provided.";
-        }
-        const results: any = { createdDirs: [], createdFiles: [], errors: [] };
-
-        for (const userPath of list) {
+export const run_shell_command = tool(
+    async ({ command, dirpath, timeout, iskeepalive }) => {
+        return new Promise((resolve) => {
             try {
 
-                let cleanPath = userPath.replace(/^[/\\]+/, '');
+                let isposix = process.platform !== "win32";
+                let stdout: string = "";
+                let stderr: string = "";
+                let child;
+                let isTerminated = false;
+                let isTimeout = false;
+                const cwd = dirpath ? path.resolve(dirpath) : undefined;
 
-                const normalizedPath = path.normalize(cleanPath);
-
-                const absPath = path.resolve(process.cwd(), normalizedPath);
-
-                const isDirectory = path.extname(absPath) === "";
-
-                if (isDirectory) {
-                    await fs.promises.mkdir(absPath, { recursive: true });
-                    results.createdDirs.push(userPath);
-                } else {
-                    const dir = path.dirname(absPath);
-                    if (dir !== process.cwd()) {
-                        await fs.promises.mkdir(dir, { recursive: true });
-                        results.createdDirs.push(userPath);
+                // --------------old process termination------------
+                if (processID.length > 0) {
+                    let errarr: string[] = [];
+                    for (const element of processID) {
+                        if (element.shell_command === command && element.working_directory === dirpath) {
+                            kill(element.process_id, (err) => {
+                                if (err) {
+                                    errarr.push(stripAnsi(err.message));
+                                }
+                            })
+                        }
+                    };
+                    if (errarr.length > 0) {
+                        resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, error: errarr.join(isposix ? '\n' : '\r\n') }));
                     }
-                    await fs.promises.writeFile(absPath, "");
-                    results.createdFiles.push(userPath);
-                }
+                    else {
+                        processID = [];
+                    }
+                };
 
-            } catch (err) {
-                if (err instanceof Error) {
-                    results.errors.push({ path: userPath, error: err.message });
+                if (!command) {
+                    resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, error: "no such command provided" }));
+                };
+
+                if (isposix) {
+                    child = spawn(command, { cwd, env: { ...process.env, CI: "true" }, shell: true });
                 } else {
-                    results.errors.push({ path: userPath, error: (err as string).toString() });
+                    child = spawn("powershell.exe", ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], { cwd, env: { ...process.env, CI: "true" } });
+                };
+
+                child.stdout.setEncoding("utf8");
+                child.stderr.setEncoding("utf8");
+
+                // ------------------ handling process timeout ---------------------
+                const timer = setTimeout(() => {
+                    if (!isTerminated) {
+                        if (iskeepalive) {
+                            if (child.pid) {
+                                processID = [...processID, { process_id: child.pid, shell_command: command, working_directory: cwd }];
+                            };
+                            resolve(JSON.stringify({ cause: "success", stdout, stderr, error: null }));
+                        } else {
+                            if (child.pid) {
+                                isTimeout = true;
+                                kill(child.pid, (err) => {
+                                    if (err) {
+                                        resolve(JSON.stringify({ cause: "error", stdout, stderr, error: err.message }));
+                                    }
+                                });
+                            }
+                        };
+                    } else {
+                        clearTimeout(timer);
+                    }
+                }, timeout);
+
+                // stdout data
+                child.stdout.on("data", (data) => {
+                    stdout += stripAnsi(data.toString());
+                    const text = stripAnsi(data.toString());
+
+                    if (patterns.some(regex => regex.test(text))) {
+                        if (child.stdin.writable) {
+                            if (process.platform != "win32") child.stdin.write('\n');
+                            else child.stdin.write('\r\n');
+                        };
+                    };
+                });
+
+                // stderr
+                child.stderr.on("data", (err) => {
+                    stderr += stripAnsi(err.toString());
+                });
+
+                // error detection
+                child.on("error", (err) => {
+                    isTerminated = true;
+                    clearTimeout(timer);
+                    if (err instanceof Error) {
+                        resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, error: err.message }))
+                    } else {
+                        resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, error: err }))
+                    }
+                });
+
+                child.on("close", (code) => {
+                    isTerminated = true;
+                    clearTimeout(timer);
+                    if (code === 0) {
+                        resolve(JSON.stringify({ cause: "success", stdout, stderr, error: null }));
+                    }
+                    else {
+                        if (isTimeout) {
+                            resolve(JSON.stringify({ cause: "timeout", stdout, stderr, error: null }));
+                        }
+                        else {
+                            resolve(JSON.stringify({ cause: "error", stdout, stderr, error: null }));
+                        }
+                    }
+                });
+
+            } catch (error) {
+                if (error instanceof Error) {
+                    resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, error: error.message }));
+                } else {
+                    resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, error }));
                 }
             }
-        }
-
-        return `Succsesfully created given files or directoryes`;
+        });
     },
     {
-        name: "create_directory_and_files",
-        description: "Creates directories and empty files. Provide relative paths. it takes the array of the paths , but if you have only create one directorie or file so you put only that one path in the array.",
+        name: "run_shell_command",
+        description: `
+## Description
+
+Executes shell commands and returns stdout, stderr, with metadeta.
+
+## When to Use This Tool
+
+Use this tool when:
+
+- You need to install project dependencies or run scripts to install dependencies.
+- You need to run shell commands.
+- you need to list directory or project.
+- when you need to create files and directoryes.
+- You can use this to start the application server (for example, in Vite or Next.js) with npm run dev or according package manager. It also lets you check logs and detect errors, which is useful for debugging.
+
+## Rules to Use This Tool
+
+- When running scripts to install project dependencies, always use non-interactive flags. This ensures no human confirmation or input is required, as this tool is optimized to run commands in a non-interactive manner.
+- Never run harmful commands.
+- do not use this for read and write file , and all those commands that returns the long stdout.
+- always run commands according the **About system**
+
+## Examples
+
+Here is an example with the npm package manager, but always use the correct command according to the selected package manager.
+
+- npm create vite@<version/latest> <app-name> -- --template <template-name> - This command installs a Vite application. Here:
+  - <version/latest> - Version of Vite. If the user specifies a version, use that; otherwise, use latest.
+  - <app-name> - Name of the application.
+  - <template-name> - Templates like react, vue, vanilla, vanilla-ts, vue-ts, react-ts etc.
+
+- npx create-next-app@<version/latest> <app-name> --yes <options> - Installs a Next.js app. Here:
+  - <version/latest> - Version of Next.js. If the user specifies a version, use that; otherwise, use latest.
+  - <options> - Options like --use-npm , --use-yarn , --use-pnpm , --js , --ts , --tailwind , --eslint , --app , --src-dir etc.
+
+In the Next.js installation command, the options field is optional. If you don’t provide it, the default recommended options will be used.
+## Resources
+
+Here are the web links for additional knowledge:
+
+- https://nextjs.org/docs/app/api-reference/cli/create-next-app - This is the official documentation link for Next.js installation commands used in a non-interactive manner.
+- https://www.npmjs.com/package/create-vite - This is the official documentation link for Vite’s npm package, which describes the non-interactive installation commands and flags.`,
         schema: z.object({
-            list: z.array(z.string()).describe("Array of relative paths of directories or files to create")
+            command: z.string().describe("command for run"),
+            dirpath: z.string().optional().describe("relative path of directory in which have to run command"),
+            timeout: z.number().default(60000).describe("timeout in miliseconds"),
+            iskeepalive: z.boolean().default(false).describe(
+                "Controls whether the process should continue running after the timeout. " +
+                "If false(default), the process will be terminated when the timeout is reached. " +
+                "If true, the process will continue running even after the timeout. " +
+                "This is useful for long-running processes such as starting a development server (e.g., Next.js, Vite, or Node.js server) where the process must remain active to allow users to access the application."
+            )
         })
     }
 );
 
-// ✅
-export const read_logs = tool(
-    async ({ command, dirPath }) => {
-        try {
-            if (!command) {
-                return JSON.stringify({
-                    Error: "command is not provided"
-                });
-            }
-            let output = "";
-            let erroroutput = "";
-            let options: { shell: boolean, cwd?: string } = { shell: true };
-
-            if (dirPath) {
-                let cleanPath = dirPath.replace(/^[/\\]+/, '');
-                const absolutePath = path.resolve(cleanPath);
-                const { exsist, isError } = await isFileExsist(absolutePath);
-                if (!exsist) {
-                    return JSON.stringify({
-                        Error: isError
-                    });
-                };
-                options.cwd = absolutePath;
-            };
-
-            const child = spawn(command, options);
-
-            child.stdout.on("data", (data) => {
-                output += data.toString();
-            });
-
-            child.stderr.on("data", (data) => {
-                erroroutput += data.toString();
-            });
-
-            return new Promise((resolve, reject) => {
-                try {
-                    child.on("error", (err) => {
-                        reject(JSON.stringify({
-                            Error: err
-                        }));
-                    });
-
-                    const timer = setTimeout(() => {
-                        if (os.platform() === 'win32') {
-                            exec(`taskkill /pid ${child.pid} /T /F`, (err: any) => {
-                                if (err) {
-                                    resolveLogs(null, err);
-                                }
-                            });
-                        } else {
-                            child.kill('SIGKILL');
-                        }
-
-                    }, 5000);
-
-                    const resolveLogs = (code: any, killError = null) => {
-                        clearTimeout(timer);
-                        resolve(JSON.stringify(
-                            {
-                                exitCode: code,
-                                stdout: stripAnsi(output) || "No stdout captured (Process might be silent)",
-                                stderr: stripAnsi(erroroutput) || "No stderr captured",
-                                killed: true,
-                                killFailed: killError ? `true , Error: ${killError}` : false
-                            }
-                        ));
-                    };
-
-                    child.on("close", (code) => {
-                        resolveLogs(code);
-                    });
-
-                } catch (error) {
-                    if (error instanceof Error) {
-
-                        reject(JSON.stringify({
-                            Error: error.message
-                        }));
-                    }
-                    else {
-                        reject(JSON.stringify({
-                            Error: error
-                        }));
-                    }
-                }
-            })
-        } catch (error) {
-            if (error instanceof Error) {
-                return JSON.stringify({
-                    Error: error.message
-                });
-            }
-            return JSON.stringify({
-                Error: error
-            });
-
-        }
-    }, {
-    name: "read_logs",
-    description: "I run the application and read the logs. Use me when you need to find errors in the application or verify whether the application is working properly. I am only useful when the server needs to be run and logs need to be monitored — for example, in frameworks like Vite (React), Next.js, express and similar environments.",
-    schema: z.object({
-        command: z.string().describe("command for run the application."),
-        dirPath: z.string().optional().describe("relative directory path in which you have to run application. This is optional. If you do not provide a dirpath, it uses the current directory by default.")
-    })
-});
-
-// console.log(await read_logs.invoke({ command: "npm run dev",dirPath:"client"}));
 
 export const web_search = tool(
     async ({ query }) => {
@@ -787,5 +677,3 @@ export const web_search = tool(
         })
     }
 );
-
-

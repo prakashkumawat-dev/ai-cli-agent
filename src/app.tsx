@@ -1,5 +1,5 @@
 import React, { useState, memo, useEffect, useRef } from 'react';
-import { Box, Text, useStdout, Newline, useApp, useInput, measureElement } from 'ink';
+import { Box, Text, useStdout, Newline, useApp, useInput } from 'ink';
 import { StateGraph, Command, interrupt, END, START, MemorySaver } from '@langchain/langgraph';
 import type { LangGraphRunnableConfig } from '@langchain/langgraph'
 import { TextInput, PasswordInput, StatusMessage, Select, Spinner } from '@inkjs/ui';
@@ -9,7 +9,7 @@ import path from 'node:path';
 import { readFile, appendFile } from 'node:fs/promises';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { SYSTEM_PROMPT1 } from './agent/system.js';
-import { install_dependency, write_File, create_directory_and_files, list_directory, append_File, web_search, edit_file, read_File, read_logs, delete_in_file, search_in_file } from './agent/tool.js';
+import { write_File, append_File, web_search, edit_file, read_File, delete_in_file, search_in_file, run_shell_command } from './agent/tool.js';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
 import MessagesList from './messageslist.js';
 import { v4 as uuid } from 'uuid';
@@ -273,16 +273,13 @@ const App = memo(() => {
     const invoketools = {
         "web_search": web_search,
         "append_File": append_File,
-        "list_directory": list_directory,
-        "create_directory_and_files": create_directory_and_files,
         "write_File": write_File,
-        "install_dependency": install_dependency,
         "search_in_file": search_in_file,
         "delete_in_file": delete_in_file,
-        "read_logs": read_logs,
         "read_File": read_File,
         "edit_file": edit_file,
-        "set_api_keys": set_api_keys
+        "set_api_keys": set_api_keys,
+        "run_shell_command": "run_shell_command"
     };
 
     // ----------------------Graph creation-----------------------
@@ -305,10 +302,8 @@ const App = memo(() => {
         "read_File": "read_File",
         "write_File": "write_File",
         "append_File": "append_File",
-        "install_dependency": "install_dependency",
         "edit_file": "edit_file",
-        "create_directory_and_files": "create_directory_and_files",
-        "read_logs": "read_logs"
+        "run_shell_command": "run_shell_command"
     };
 
     const mockllm = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
@@ -318,7 +313,7 @@ const App = memo(() => {
                 const chatllm = new ChatGoogleGenerativeAI({
                     apiKey: keyRef.current.GEMINI_API_KEY,
                     model: "gemini-3-flash-preview"
-                }).bindTools([install_dependency, write_File, create_directory_and_files, list_directory, append_File, web_search, edit_file, read_File, read_logs, delete_in_file, search_in_file, set_api_keys]);
+                }).bindTools([run_shell_command, write_File, append_File, web_search, edit_file, read_File, delete_in_file, search_in_file, set_api_keys]);
 
                 const responce = await chatllm.invoke([...state.messageList]);
 
@@ -349,7 +344,7 @@ const App = memo(() => {
                     const chatllm = new ChatGoogleGenerativeAI({
                         apiKey: keys.GEMINI_API_KEY,
                         model: "gemini-3-flash-preview"
-                    }).bindTools([install_dependency, write_File, create_directory_and_files, list_directory, append_File, web_search, edit_file, read_File, read_logs, delete_in_file, search_in_file, set_api_keys]);
+                    }).bindTools([run_shell_command, write_File, append_File, web_search, edit_file, read_File, delete_in_file, search_in_file, set_api_keys]);
 
                     const responce = await chatllm.invoke([...state.messageList]);
 
