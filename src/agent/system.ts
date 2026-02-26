@@ -1,4 +1,3 @@
-import process from "node:process";
 import os from 'node:os';
 
 export const SYSTEM_PROMPT1 = `

@@ -70,83 +70,26 @@ const isFileExsist = async (filepath: string) => {
     };
 };
 
-
-export const read_File = tool(async ({ filePath }) => {
-    try {
-        if (!filePath) {
-            return `File path is not provided please provid relativ file path to read file`
-        }
-
-        if (path.isAbsolute(filePath)) {
-            return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.`;
-        }
-
-        let cleanPath = filePath.replace(/^[/\\]+/, '');
-
-        const normalizedPath = path.normalize(cleanPath);
-
-        const { absolutepath, Error } = saftyPath(normalizedPath);
-
-        if (!absolutepath) {
-            return Error
-        };
-
-        const { exsist, isError } = await isFileExsist(absolutepath);
-        if (!exsist) {
-            return `Error occurred: ${isError}`
-        };
-
-        const data = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
-
-        const lines = data.split('\n');
-
-        const numbereddata = lines.map((line, index) => {
-            return `${index + 1} | ${line}`;
-        }).join('\n');
-
-        return numbereddata;
-
-    } catch (error) {
-        if (error instanceof Error) {
-            return JSON.stringify({
-                Error: error.message
-            });
-        };
-        return JSON.stringify({
-            Error: error
-        });
-    }
-},
-    {
-        name: "read_File",
-        description: "This tool reads the file from the provided file path and outputs the file content with line numbers. It must not read the .env file or any other file that can leak user privacy.",
-        schema: z.object({
-            filePath: z.string().describe("the relative path of the file. always give ralative path of the file.")
-        })
-    }
-);
-
-
 // console.log(await read_File.invoke({ filePath: "//prakash//banwari//index.txt" }));
 
 // ✅
-export const write_File = tool(
-    async ({ filePath, content }) => {
+export const write_file = tool(
+    async ({ filepath, content, mode }) => {
         try {
 
-            if (!filePath) {
-                return `File path is not provided please provid relativ file path`
+            if (!filepath) {
+                return "error: File path is not provided please provid relativ file path"
             }
 
-            if (path.isAbsolute(filePath)) {
-                return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.`;
+            if (path.isAbsolute(filepath)) {
+                return "error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead."
             }
 
             if (!content) {
-                return `content is not provided please provide the code to write in the file`
+                return "error: content is not provided please provide the code to write in the file"
             }
 
-            let cleanPath = filePath.replace(/^[/\\]+/, '');
+            let cleanPath = filepath.replace(/^[/\\]+/, '');
 
             const normalizedPath = path.normalize(cleanPath);
 
@@ -157,88 +100,36 @@ export const write_File = tool(
             }
             const { exsist, isError } = await isFileExsist(absolutepath);
             if (!exsist) {
-                return `Error occurred: ${isError}`
+                return `error: ${isError}`
             };
 
-            await fs.promises.writeFile(absolutepath, content)
-            return `file successfully wrote `
+            if (mode == "write") {
+                await fs.promises.writeFile(absolutepath, content)
+                return "success: file successfully wrote"
+            } else {
+                await fs.promises.appendFile(absolutepath, `\n${content}`);
+                return `appended succsesfully in ${filepath}`
+            }
         } catch (error) {
             if (error instanceof Error) {
-                return JSON.stringify({
-                    Error: error.message
-                });
+                return error.message;
             };
-            return JSON.stringify({
-                Error: error
-            });
+            return (error as string).toString()
         }
     },
     {
-        name: "write_File",
-        description: "write the provided content in the specified file. but if the content is already avelable then it overwrite. use me for writing empty files and when you have to overwrite.",
+        name: "write_file",
+        description: "Writes the provided content to the specified file according to the **mode**. This is useful for writing code files and any files.",
         schema: z.object({
-            filePath: z.string().describe("The RELATIVE path of the file starting from project root. Example: 'src/components/Button.js' or 'package.json'. Do not use absolute paths like 'C:/Users/...'."),
-            content: z.string().describe("content that have to be write in the file")
+            filepath: z.string().describe("The **RELATIVE** path of the file starting from project root. Example: 'src/components/Button.js' or 'package.json'. Do not use absolute paths like 'C:/Users/...'."),
+            content: z.string().describe("content that have to be write in the file"),
+            mode: z.enum(["write", "append"]).default("write").describe(`The default mode is **write**, which overwrites the file if it already contains content.
+If the mode is ""append**, new content is added to the end of the file without overwriting existing data.`)
         })
     }
 );
 
 // console.log(await write_File.invoke({filePath:"index.txt",content:"hy how are you"}));
-
-// ✅
-export const append_File = tool(
-    async ({ filePath, content }) => {
-        try {
-
-            if (!filePath) {
-                return `File path is not provided please provid relativ file path`
-            }
-
-            if (path.isAbsolute(filePath)) {
-                return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.`;
-            }
-
-            if (!content) {
-                return `Error: content is not provided! , please provide the content to append.`
-            }
-
-            let cleanPath = filePath.replace(/^[/\\]+/, '');
-
-            const normalizedPath = path.normalize(cleanPath);
-            const { absolutepath, Error } = saftyPath(normalizedPath);
-
-            if (!absolutepath) {
-                return Error
-            }
-            const { exsist, isError } = await isFileExsist(absolutepath);
-            if (!exsist) {
-                return `Error occurred: ${isError}`
-            };
-
-            await fs.promises.appendFile(absolutepath, `\n${content}`);
-            return `appended or added succsesfully in ${filePath}`
-        } catch (error) {
-            if (error instanceof Error) {
-                return JSON.stringify({
-                    Error: error.message
-                });
-            };
-            return JSON.stringify({
-                Error: error
-            });
-        }
-    },
-    {
-        name: "append_File",
-        description: "it write the content in the file but not overwrite the content that already have. it actualy append or add the content in the file's last. use this when you have to add content in file.",
-        schema: z.object({
-            filePath: z.string().describe("relative file path in which have to append content"),
-            content: z.string().describe("content that have to be append in the file")
-        })
-    }
-);
-
-
 
 export const search_in_file = tool(
     async ({ filePath, startline, endline }) => {
@@ -494,7 +385,7 @@ export const run_shell_command = tool(
                         }
                     };
                     if (errarr.length > 0) {
-                        resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, error: errarr.join(isposix ? '\n' : '\r\n') }));
+                        resolve(`error: ${errarr.join(isposix ? '\n' : '\r\n')}`);
                     }
                     else {
                         processID = [];
@@ -502,7 +393,7 @@ export const run_shell_command = tool(
                 };
 
                 if (!command) {
-                    resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, error: "no such command provided" }));
+                    resolve("error: no such command provided");
                 };
 
                 if (isposix) {
@@ -521,13 +412,21 @@ export const run_shell_command = tool(
                             if (child.pid) {
                                 processID = [...processID, { process_id: child.pid, shell_command: command, working_directory: cwd }];
                             };
-                            resolve(JSON.stringify({ cause: "success", stdout, stderr, error: null }));
+                            // mm
+                            if (stdout.length > 0) {
+                                const lines = stdout.split('\n');
+                                const numbereddata = lines.map((line, index) => {
+                                    return `${index + 1} | ${line}`;
+                                }).join('\n');
+                                stdout = numbereddata;
+                            };
+                            resolve(`${stdout}\n${stderr}`);
                         } else {
                             if (child.pid) {
                                 isTimeout = true;
                                 kill(child.pid, (err) => {
                                     if (err) {
-                                        resolve(JSON.stringify({ cause: "error", stdout, stderr, error: err.message }));
+                                        resolve(`${err.message}`)
                                     }
                                 });
                             }
@@ -560,33 +459,43 @@ export const run_shell_command = tool(
                     isTerminated = true;
                     clearTimeout(timer);
                     if (err instanceof Error) {
-                        resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, error: err.message }))
+                        resolve(`${err.message}`)
                     } else {
-                        resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, error: err }))
+                        resolve(`${err}`);
                     }
                 });
 
                 child.on("close", (code) => {
                     isTerminated = true;
+
                     clearTimeout(timer);
+
+                    if (stdout.length > 0) {
+                        const lines = stdout.split('\n');
+                        const numbereddata = lines.map((line, index) => {
+                            return `${index + 1} | ${line}`;
+                        }).join('\n');
+                        stdout = numbereddata;
+                    };
+
                     if (code === 0) {
-                        resolve(JSON.stringify({ cause: "success", stdout, stderr, error: null }));
+                        resolve(`${stdout}\n${stderr}`);
                     }
                     else {
                         if (isTimeout) {
-                            resolve(JSON.stringify({ cause: "timeout", stdout, stderr, error: null }));
+                            resolve(`${stdout}\n${stderr}`);
                         }
                         else {
-                            resolve(JSON.stringify({ cause: "error", stdout, stderr, error: null }));
+                            resolve(`${stdout}\n${stderr}`);
                         }
                     }
                 });
 
             } catch (error) {
                 if (error instanceof Error) {
-                    resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, error: error.message }));
+                    resolve(`${error.message}`);
                 } else {
-                    resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, error }));
+                    resolve(`${error}`);
                 }
             }
         });
@@ -605,15 +514,15 @@ Use this tool when:
 - You need to install project dependencies or run scripts to install dependencies.
 - You need to run shell commands.
 - you need to list directory or project.
-- when you need to create files and directoryes.
+- when you need to create files and directoryes, read files.
 - You can use this to start the application server (for example, in Vite or Next.js) with npm run dev or according package manager. It also lets you check logs and detect errors, which is useful for debugging.
 
 ## Rules to Use This Tool
 
 - When running scripts to install project dependencies, always use non-interactive flags. This ensures no human confirmation or input is required, as this tool is optimized to run commands in a non-interactive manner.
 - Never run harmful commands.
-- do not use this for read and write file , and all those commands that returns the long stdout.
-- Always install or run dependencies using the appropriate package manager. If none is specified or cannot be determined, default to npm.
+- do not use this write file.
+- never list the node_modules folder because it can create the infinite and endless process.
 - always run commands according the **About system**
 
 ## Examples
@@ -649,7 +558,6 @@ Here are the web links for additional knowledge:
         })
     }
 );
-
 
 export const web_search = tool(
     async ({ query }) => {
