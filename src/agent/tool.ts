@@ -70,6 +70,62 @@ const isFileExsist = async (filepath: string) => {
     };
 };
 
+export const read_File = tool(async ({ filePath }) => {
+    try {
+        if (!filePath) {
+            return `File path is not provided please provid relativ file path to read file`
+        }
+
+        if (path.isAbsolute(filePath)) {
+            return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.`;
+        }
+
+        let cleanPath = filePath.replace(/^[/\\]+/, '');
+
+        const normalizedPath = path.normalize(cleanPath);
+
+        const { absolutepath, Error } = saftyPath(normalizedPath);
+
+        if (!absolutepath) {
+            return Error
+        };
+
+        const { exsist, isError } = await isFileExsist(absolutepath);
+        if (!exsist) {
+            return `Error occurred: ${isError}`
+        };
+
+        const data = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
+
+        const lines = data.split('\n');
+
+        const numbereddata = lines.map((line, index) => {
+            return `${index + 1} | ${line}`;
+        }).join('\n');
+
+        return numbereddata;
+
+    } catch (error) {
+        if (error instanceof Error) {
+            return JSON.stringify({
+                Error: error.message
+            });
+        };
+        return JSON.stringify({
+            Error: error
+        });
+    }
+},
+    {
+        name: "read_File",
+        description: "This tool reads the file from the provided file path and outputs the file content with line numbers. It must not read the .env file or any other file that can leak user privacy.",
+        schema: z.object({
+            filePath: z.string().describe("the relative path of the file. always give ralative path of the file.")
+        })
+    }
+);
+
+
 // console.log(await read_File.invoke({ filePath: "//prakash//banwari//index.txt" }));
 
 // ✅
@@ -363,7 +419,6 @@ export const run_shell_command = tool(
     async ({ command, dirpath, timeout, iskeepalive }) => {
         return new Promise((resolve) => {
             try {
-
                 let isposix = process.platform !== "win32";
                 let stdout: string = "";
                 let stderr: string = "";
@@ -385,7 +440,7 @@ export const run_shell_command = tool(
                         }
                     };
                     if (errarr.length > 0) {
-                        resolve(`error: ${errarr.join(isposix ? '\n' : '\r\n')}`);
+                        resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, toolerror: `${errarr.join(isposix ? '\n' : '\r\n')}` }));
                     }
                     else {
                         processID = [];
@@ -393,7 +448,7 @@ export const run_shell_command = tool(
                 };
 
                 if (!command) {
-                    resolve("error: no such command provided");
+                    resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, toolerror: "command is not provided" }));
                 };
 
                 if (isposix) {
@@ -412,21 +467,13 @@ export const run_shell_command = tool(
                             if (child.pid) {
                                 processID = [...processID, { process_id: child.pid, shell_command: command, working_directory: cwd }];
                             };
-                            // mm
-                            if (stdout.length > 0) {
-                                const lines = stdout.split('\n');
-                                const numbereddata = lines.map((line, index) => {
-                                    return `${index + 1} | ${line}`;
-                                }).join('\n');
-                                stdout = numbereddata;
-                            };
-                            resolve(`${stdout}\n${stderr}`);
+                            resolve(JSON.stringify({ cause: "success", stdout: stdout.length > 0 ? stdout : null, stderr: stderr.length > 0 ? stderr : null, toolerror: null }));
                         } else {
                             if (child.pid) {
                                 isTimeout = true;
                                 kill(child.pid, (err) => {
                                     if (err) {
-                                        resolve(`${err.message}`)
+                                        resolve(JSON.stringify({ cause: "success", stdout: null, stderr: null, toolerror: err.message }));
                                     }
                                 });
                             }
@@ -459,9 +506,9 @@ export const run_shell_command = tool(
                     isTerminated = true;
                     clearTimeout(timer);
                     if (err instanceof Error) {
-                        resolve(`${err.message}`)
+                        resolve(JSON.stringify({ cause: "error", stdout: stdout.length > 0 ? stdout : null, stderr: err.message, toolerror: null }));
                     } else {
-                        resolve(`${err}`);
+                        resolve(JSON.stringify({ cause: "error", stdout: stdout.length > 0 ? stdout : null, stderr: err, toolerror: null }));
                     }
                 });
 
@@ -470,32 +517,24 @@ export const run_shell_command = tool(
 
                     clearTimeout(timer);
 
-                    if (stdout.length > 0) {
-                        const lines = stdout.split('\n');
-                        const numbereddata = lines.map((line, index) => {
-                            return `${index + 1} | ${line}`;
-                        }).join('\n');
-                        stdout = numbereddata;
-                    };
-
                     if (code === 0) {
-                        resolve(`${stdout}\n${stderr}`);
+                        resolve(JSON.stringify({ cause: "success", stdout: stdout.length > 0 ? stdout : null, stderr: stderr.length > 0 ? stderr : null, toolerror: null }));
                     }
                     else {
                         if (isTimeout) {
-                            resolve(`${stdout}\n${stderr}`);
+                            resolve(JSON.stringify({ cause: "timeout", stdout: stdout.length > 0 ? stdout : null, stderr: stderr.length > 0 ? stderr : null, toolerror: null }));
                         }
                         else {
-                            resolve(`${stdout}\n${stderr}`);
+                            resolve(JSON.stringify({ cause: "error", stdout: stdout.length > 0 ? stdout : null, stderr: stderr.length > 0 ? stderr : null, toolerror: null }));
                         }
                     }
                 });
 
             } catch (error) {
                 if (error instanceof Error) {
-                    resolve(`${error.message}`);
+                    resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, toolerror: error.message }));
                 } else {
-                    resolve(`${error}`);
+                    resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, toolerror: error }));
                 }
             }
         });
@@ -511,18 +550,17 @@ Executes shell commands and returns stdout, stderr, with metadeta.
 
 Use this tool when:
 
-- You need to install project dependencies or run scripts to install dependencies.
-- You need to run shell commands.
-- you need to list directory or project.
-- when you need to create files and directoryes, read files.
-- You can use this to start the application server (for example, in Vite or Next.js) with npm run dev or according package manager. It also lets you check logs and detect errors, which is useful for debugging.
+- You need to install project dependencies.
+- you need to list directorys.
+- when you need to create files and directoryes.
+- when you need to start the application server (for example, in Vite or Next.js) with **npm run dev** or according package manager. It also lets you check logs and detect errors, which is useful for debugging.
 
 ## Rules to Use This Tool
 
 - When running scripts to install project dependencies, always use non-interactive flags. This ensures no human confirmation or input is required, as this tool is optimized to run commands in a non-interactive manner.
 - Never run harmful commands.
-- do not use this write file.
-- never list the node_modules folder because it can create the infinite and endless process.
+- never use this tool for read and write file , and all those commands that returns the long stdout like **ls -r** , because it can create the infinite loop.
+- never list the node_modules like folders because it can create the infinite and endless process.
 - always run commands according the **About system**
 
 ## Examples
