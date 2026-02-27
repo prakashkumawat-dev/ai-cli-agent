@@ -70,17 +70,17 @@ const isFileExsist = async (filepath: string) => {
     };
 };
 
-export const read_File = tool(async ({ filePath }) => {
+export const read_file = tool(async ({ filepath }) => {
     try {
-        if (!filePath) {
+        if (!filepath) {
             return `File path is not provided please provid relativ file path to read file`
         }
 
-        if (path.isAbsolute(filePath)) {
+        if (path.isAbsolute(filepath)) {
             return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.`;
         }
 
-        let cleanPath = filePath.replace(/^[/\\]+/, '');
+        let cleanPath = filepath.replace(/^[/\\]+/, '');
 
         const normalizedPath = path.normalize(cleanPath);
 
@@ -117,10 +117,10 @@ export const read_File = tool(async ({ filePath }) => {
     }
 },
     {
-        name: "read_File",
+        name: "read_file",
         description: "This tool reads the file from the provided file path and outputs the file content with line numbers. It must not read the .env file or any other file that can leak user privacy.",
         schema: z.object({
-            filePath: z.string().describe("the relative path of the file. always give ralative path of the file.")
+            filepath: z.string().describe("the relative path of the file. always give ralative path of the file.")
         })
     }
 );
@@ -320,7 +320,7 @@ export const delete_in_file = tool(
     },
     {
         name: "delete_in_file",
-        description: "delete the specific part of the file",
+        description: "delete the specific lines of the file's content",
         schema: z.object({
             filePath: z.string().describe("relative filepath of the file in which have to delete code"),
             startline: z.number().describe("The number of the initial line from where to start deleting the code"),
