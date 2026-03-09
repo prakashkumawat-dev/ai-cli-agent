@@ -9,15 +9,11 @@ import path from 'node:path';
 import { readFile, appendFile } from 'node:fs/promises';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { SYSTEM_PROMPT1 } from './agent/system.js';
-import { write_file, read_file, web_search, edit_file, delete_in_file, search_in_file, run_shell_command } from './agent/tool.js';
+import { write_file, read_file, web_search, edit_file, delete_in_file, search_in_file, run_shell_command, ispowershell } from './agent/tool.js';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
 import MessagesList from './messageslist.js';
 import { v4 as uuid } from 'uuid';
 
-interface Size {
-    height: number,
-    width: number
-}
 
 interface KeyRef {
     current: {
@@ -90,7 +86,6 @@ const App = memo(() => {
     const storeRef: { current: Grant[] } = useRef([]);
     const apiRef: { current: string[] } = useRef([]);
     const keyRef: KeyRef = useRef({ GEMINI_API_KEY: null, TAVILY_API_KEY: null });
-    const firstRef: { current: any } = useRef(null);
 
     const { exit } = useApp();
     const { stdout } = useStdout();
@@ -103,8 +98,11 @@ const App = memo(() => {
     // ------------ handling terminal size --------------
 
     useEffect(() => {
-        let timeout: any = null;
+        if (process.platform == "win32") {
+            ispowershell();
+        };
 
+        let timeout: any = null;
         const updatesize = () => {
             if (timeout) {
                 clearTimeout(timeout);

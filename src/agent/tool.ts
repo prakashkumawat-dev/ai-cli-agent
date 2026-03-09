@@ -3,7 +3,7 @@ import z from 'zod';
 import process from 'node:process';
 import fs from 'node:fs';
 import path from "node:path";
-import { spawn } from 'node:child_process';
+import { spawn, exec } from 'node:child_process';
 import stripAnsi from 'strip-ansi';
 import { tavily } from '@tavily/core';
 import kill from 'tree-kill';
@@ -29,7 +29,27 @@ interface PID {
     working_directory: string | undefined,
     shell_command: string
 };
+
+let platform = process.platform;
+let ispwshexsist = true;
+
 let processID: PID[] = [];
+
+process.on("exit", (code) => {
+    if (processID.length > 0) {
+        for (const element of processID) {
+            kill(element.process_id);
+        }
+    }
+});
+
+export const ispowershell = () => {
+    exec("where powershell", (err, stdout) => {
+        if (err) {
+            ispwshexsist = false;
+        }
+    });
+};
 
 const saftyPath = (dirPath: string) => {
     try {
@@ -149,15 +169,7 @@ export const write_file = tool(
 
             const normalizedPath = path.normalize(cleanPath);
 
-            const { absolutepath, Error } = saftyPath(normalizedPath);
-
-            if (!absolutepath) {
-                return Error
-            }
-            const { exsist, isError } = await isFileExsist(absolutepath);
-            if (!exsist) {
-                return `error: ${isError}`
-            };
+            const absolutepath = path.resolve(normalizedPath);
 
             if (mode == "write") {
                 await fs.promises.writeFile(absolutepath, content)
@@ -419,7 +431,7 @@ export const run_shell_command = tool(
     async ({ command, dirpath, timeout, iskeepalive }) => {
         return new Promise((resolve) => {
             try {
-                let isposix = process.platform !== "win32";
+                let isposix = process.platform === "win32";
                 let stdout: string = "";
                 let stderr: string = "";
                 let child;
@@ -451,10 +463,14 @@ export const run_shell_command = tool(
                     resolve(JSON.stringify({ cause: "error", stdout: null, stderr: null, toolerror: "command is not provided" }));
                 };
 
-                if (isposix) {
+                if (!isposix) {
                     child = spawn(command, { cwd, env: { ...process.env, CI: "true" }, shell: true });
                 } else {
-                    child = spawn("powershell.exe", ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], { cwd, env: { ...process.env, CI: "true" } });
+                    if (ispwshexsist) {
+                        child = spawn("powershell.exe", ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], { cwd, env: { ...process.env, CI: "true" } });
+                    } else {
+                        child = spawn(command, { cwd, env: { ...process.env, CI: "true" }, shell: true });
+                    }
                 };
 
                 child.stdout.setEncoding("utf8");
@@ -541,8 +557,7 @@ export const run_shell_command = tool(
     },
     {
         name: "run_shell_command",
-        description: `
-## Description
+        description: `## Description
 
 Executes shell commands and returns stdout, stderr, with metadeta.
 
@@ -550,34 +565,26 @@ Executes shell commands and returns stdout, stderr, with metadeta.
 
 Use this tool when:
 
-- You need to install project dependencies.
-- you need to list directorys.
-- when you need to create files and directoryes.
+- You need to install project dependencies , list directoryes , create directoryes ans files.
 - when you need to start the application server (for example, in Vite or Next.js) with **npm run dev** or according package manager. It also lets you check logs and detect errors, which is useful for debugging.
 
-## Rules to Use This Tool
+## Strict Rules
 
 - When running scripts to install project dependencies, always use non-interactive flags. This ensures no human confirmation or input is required, as this tool is optimized to run commands in a non-interactive manner.
 - Never run harmful commands.
 - never use this tool for read and write file , and all those commands that returns the long stdout like **ls -r** , because it can create the infinite loop.
 - never list the node_modules like folders because it can create the infinite and endless process.
+- whenever you need to start application server(but not for debuging purpose) **timeout** should be less then 15000 miliseconds.
 - always run commands according the **About system**
 
-## Examples
+## About system
 
-Here is an example with the npm package manager, but always use the correct command according to the selected package manager.
+this is about the system:
 
-- npm create vite@<version/latest> <app-name> -- --template <template-name> - This command installs a Vite application. Here:
-  - <version/latest> - Version of Vite. If the user specifies a version, use that; otherwise, use latest.
-  - <app-name> - Name of the application.
-  - <template-name> - Templates like react, vue, vanilla, vanilla-ts, vue-ts, react-ts etc.
+- operating system - ${platform}
+- shell - ${platform == "win32" ? ispwshexsist ? "powershell" : "cmd" : platform == "linux" ? "bash" : platform == "darwin" ? "zsh" : "system default"}
 
-- npx create-next-app@<version/latest> <app-name> --yes <options> - Installs a Next.js app. Here:
-  - <version/latest> - Version of Next.js. If the user specifies a version, use that; otherwise, use latest.
-  - <options> - Options like --use-npm , --use-yarn , --use-pnpm , --js , --ts , --tailwind , --eslint , --app , --src-dir etc.
-
-In the Next.js installation command, the options field is optional. If you don’t provide it, the default recommended options will be used.
-## Resources
+## Resources:-
 
 Here are the web links for additional knowledge:
 
@@ -586,7 +593,7 @@ Here are the web links for additional knowledge:
         schema: z.object({
             command: z.string().describe("command for run"),
             dirpath: z.string().optional().describe("relative path of directory in which have to run command"),
-            timeout: z.number().default(60000).describe("timeout in miliseconds"),
+            timeout: z.number().default(120000).describe("timeout in miliseconds"),
             iskeepalive: z.boolean().default(false).describe(
                 "Controls whether the process should continue running after the timeout. " +
                 "If false(default), the process will be terminated when the timeout is reached. " +
