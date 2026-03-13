@@ -58,7 +58,6 @@ const Config: FC<child> = ({ Setconfigrations }) => {
         stdout.on('resize', updatesize);
         return () => {
             stdout.off('resize', updatesize);
-            process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
         }
     }, []);
     useInput((input, key) => {
