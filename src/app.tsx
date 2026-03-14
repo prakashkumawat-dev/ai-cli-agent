@@ -297,7 +297,6 @@ const App = memo(() => {
 
     const requiredTools = {
         "write_file": "write_file",
-        "append_File": "append_File",
         "edit_file": "edit_file",
         "run_shell_command": "run_shell_command",
         "read_file": "read_file"
@@ -705,7 +704,7 @@ const App = memo(() => {
         {ToolPermissions.shouldshow && <Box width={size.width} flexDirection="column" gap={1} paddingLeft={1} paddingRight={1} borderColor={"gray"} borderStyle={"round"}>
             <Box flexDirection="column">
                 <Text wrap="wrap">Do you allow to procced the Tool <Text bold={true}>{ToolPermissions.toolinfo[ToolPermissions.index]?.name} ❔</Text> </Text>
-                <Text color={"gray"} wrap="truncate-end">args: {JSON.stringify(ToolPermissions.toolinfo[ToolPermissions.index]?.args)}</Text>
+                <Text color={"#ababab"} wrap="truncate-end">args: {JSON.stringify(ToolPermissions.toolinfo[ToolPermissions.index]?.args)}</Text>
             </Box>
             <Select options={[
                 { label: "allow for this time", value: "allow" },
@@ -721,7 +720,7 @@ const App = memo(() => {
                 <StatusMessage variant={InfoMessage.type}>
                     {InfoMessage.type}
                 </StatusMessage>
-                <Text key={"somw2dasd34asert"} color={"gray"} wrap="wrap">{InfoMessage.message}</Text>
+                <Text key={"somw2dasd34asert"} color={"#ababab"} wrap="wrap">{InfoMessage.message}</Text>
             </Box>
         }
         {/* status spinner */}

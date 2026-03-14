@@ -93,11 +93,11 @@ const isFileExsist = async (filepath: string) => {
 export const read_file = tool(async ({ filepath }) => {
     try {
         if (!filepath) {
-            return `File path is not provided please provid relativ file path to read file`
+            return JSON.stringify({ cause: "error", message: "File path is not provided please provid relativ file path to read file" })
         }
 
         if (path.isAbsolute(filepath)) {
-            return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.`;
+            return JSON.stringify({ cause: "error", message: "Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead." })
         }
 
         let cleanPath = filepath.replace(/^[/\\]+/, '');
@@ -112,7 +112,7 @@ export const read_file = tool(async ({ filepath }) => {
 
         const { exsist, isError } = await isFileExsist(absolutepath);
         if (!exsist) {
-            return `Error occurred: ${isError}`
+            return JSON.stringify({ cause: "error", message: `${isError}` })
         };
 
         const data = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
@@ -123,16 +123,18 @@ export const read_file = tool(async ({ filepath }) => {
             return `${index + 1} | ${line}`;
         }).join('\n');
 
-        return numbereddata;
+        return JSON.stringify({ cause: "success", filedata: numbereddata });
 
     } catch (error) {
         if (error instanceof Error) {
             return JSON.stringify({
-                Error: error.message
+                cause: "error",
+                message: error.message
             });
         };
         return JSON.stringify({
-            Error: error
+            cause: "error",
+            message: error
         });
     }
 },
@@ -152,17 +154,16 @@ export const read_file = tool(async ({ filepath }) => {
 export const write_file = tool(
     async ({ filepath, content, mode }) => {
         try {
-
             if (!filepath) {
-                return "error: File path is not provided please provid relativ file path"
+                return JSON.stringify({ cause: "error", message: "File path is not provided please provid relativ file path" })
             }
 
             if (path.isAbsolute(filepath)) {
-                return "error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead."
+                return JSON.stringify({ cause: "error", message: "Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead." })
             }
 
             if (!content) {
-                return "error: content is not provided please provide the code to write in the file"
+                return JSON.stringify({ cause: "error", message: "content is not provided please provide the code to write in the file" })
             }
 
             let cleanPath = filepath.replace(/^[/\\]+/, '');
@@ -173,10 +174,10 @@ export const write_file = tool(
 
             if (mode == "write") {
                 await fs.promises.writeFile(absolutepath, content)
-                return "success: file successfully wrote"
+                return JSON.stringify({ cause: "success", message: "file successfully wrote" });
             } else {
                 await fs.promises.appendFile(absolutepath, `\n${content}`);
-                return `appended succsesfully in ${filepath}`
+                return JSON.stringify({ cause: "success", message: `appended succesfully in ${filepath}` })
             }
         } catch (error) {
             if (error instanceof Error) {
