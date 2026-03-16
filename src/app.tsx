@@ -9,7 +9,7 @@ import path from 'node:path';
 import { readFile, appendFile } from 'node:fs/promises';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { SYSTEM_PROMPT1 } from './agent/system.js';
-import { write_file, read_file, web_search, edit_file, delete_in_file, search_in_file, run_shell_command, ispowershell } from './agent/tool.js';
+import { write_file, read_file, edit_file, delete_in_file, search_in_file, run_shell_command, ispowershell } from './agent/tool.js';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
 import MessagesList from './messageslist.js';
 import { v4 as uuid } from 'uuid';
@@ -269,7 +269,7 @@ const App = memo(() => {
     // ---------------tool binding with tools---------------
 
     const invoketools = {
-        "web_search": web_search,
+        // "web_search": web_search,
         "write_file": write_file,
         "search_in_file": search_in_file,
         "delete_in_file": delete_in_file,
@@ -309,7 +309,7 @@ const App = memo(() => {
                 const chatllm = new ChatGoogleGenerativeAI({
                     apiKey: keyRef.current.GEMINI_API_KEY,
                     model: "gemini-3-flash-preview"
-                }).bindTools([run_shell_command, read_file, write_file, web_search, edit_file, delete_in_file, search_in_file, set_api_keys]);
+                }).bindTools([run_shell_command, read_file, write_file, edit_file, delete_in_file, search_in_file, set_api_keys]);
 
                 const responce = await chatllm.invoke([...state.messageList]);
 
@@ -340,7 +340,7 @@ const App = memo(() => {
                     const chatllm = new ChatGoogleGenerativeAI({
                         apiKey: keys.GEMINI_API_KEY,
                         model: "gemini-3-flash-preview"
-                    }).bindTools([run_shell_command, read_file, write_file, web_search, edit_file, delete_in_file, search_in_file, set_api_keys]);
+                    }).bindTools([run_shell_command, read_file, write_file, edit_file, delete_in_file, search_in_file, set_api_keys]);
 
                     const responce = await chatllm.invoke([...state.messageList]);
 

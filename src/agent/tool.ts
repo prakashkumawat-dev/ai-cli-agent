@@ -38,7 +38,7 @@ let processID: PID[] = [];
 process.on("exit", (code) => {
     if (processID.length > 0) {
         for (const element of processID) {
-            kill(element.process_id);
+            process.kill(element.process_id);
         }
     }
 });
@@ -577,6 +577,7 @@ Use this tool when:
 - never list the node_modules like folders because it can create the infinite and endless process.
 - whenever you need to start application server(but not for debuging purpose) **timeout** should be less then 15000 miliseconds.
 - always run commands according the **About system**
+- Sometimes while creating a project, the script only generates the project structure and asks you to run npm i or pnpm i (depending on the package manager). If a folder is created with a package.json inside it, first cd into that folder and then install the dependencies. ex- **npm create vite@latest my-app -- --template react && cd my-app && npm i**.
 
 ## About system
 
@@ -605,30 +606,30 @@ Here are the web links for additional knowledge:
     }
 );
 
-export const web_search = tool(
-    async ({ query }) => {
-        try {
+// export const web_search = tool(
+//     async ({ query }) => {
+//         try {
 
-            const tvly = tavily({ apiKey: "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" });
-            const response = await tvly.search(query);
-            return JSON.stringify(response.results[0]);
+//             const tvly = tavily({ apiKey: "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" });
+//             const response = await tvly.search(query);
+//             return JSON.stringify(response.results[0]);
 
-        } catch (error) {
-            if (error instanceof Error) {
-                return JSON.stringify({
-                    Error: error.message
-                })
-            }
-            return JSON.stringify({
-                Error: error
-            });
-        }
-    },
-    {
-        name: "web_search",
-        description: `The **Web Search Tool** provides fresh, up-to-date, and accurate information from the internet, making it the ideal choice whenever you need the latest data, reliable facts, or step-by-step guidance. Use it to stay informed on current topics, explore new knowledge, or follow practical tutorials—for example, *how to install Tailwind CSS with React*—ensuring you always have the most precise and relevant information at your fingertips.`,
-        schema: z.object({
-            query: z.string().describe("query for search about")
-        })
-    }
-);
+//         } catch (error) {
+//             if (error instanceof Error) {
+//                 return JSON.stringify({
+//                     Error: error.message
+//                 })
+//             }
+//             return JSON.stringify({
+//                 Error: error
+//             });
+//         }
+//     },
+//     {
+//         name: "web_search",
+//         description: `The **Web Search Tool** provides fresh, up-to-date, and accurate information from the internet, making it the ideal choice whenever you need the latest data, reliable facts, or step-by-step guidance. Use it to stay informed on current topics, explore new knowledge, or follow practical tutorials—for example, *how to install Tailwind CSS with React*—ensuring you always have the most precise and relevant information at your fingertips.`,
+//         schema: z.object({
+//             query: z.string().describe("query for search about")
+//         })
+//     }
+// );
