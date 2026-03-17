@@ -181,9 +181,9 @@ export const write_file = tool(
             }
         } catch (error) {
             if (error instanceof Error) {
-                return error.message;
+                return JSON.stringify({ cause: "error", message: error.message });
             };
-            return (error as string).toString()
+            return JSON.stringify({ cause: "error", message: (error as string).toString() });
         }
     },
     {
@@ -578,6 +578,7 @@ Use this tool when:
 - whenever you need to start application server(but not for debuging purpose) **timeout** should be less then 15000 miliseconds.
 - always run commands according the **About system**
 - Sometimes while creating a project, the script only generates the project structure and asks you to run npm i or pnpm i (depending on the package manager). If a folder is created with a package.json inside it, first cd into that folder and then install the dependencies. ex- **npm create vite@latest my-app -- --template react && cd my-app && npm i**.
+- Once the application server starts(dev or any), it should not start again until the user explicitly asks to restart it. because i do not close that connection.
 
 ## About system
 
