@@ -5,7 +5,6 @@ import fs from 'node:fs';
 import path from "node:path";
 import { spawn, exec } from 'node:child_process';
 import stripAnsi from 'strip-ansi';
-// import { tavily } from '@tavily/core';
 import kill from 'tree-kill';
 
 const patterns = [
@@ -198,234 +197,75 @@ If the mode is ""append**, new content is added to the end of the file without o
     }
 );
 
-// console.log(await write_File.invoke({filePath:"index.txt",content:"hy how are you"}));
 
-// export const search_in_file = tool(
-//     async ({ filePath, startline, endline }) => {
-//         try {
-
-//             if (!filePath) {
-//                 return `File path is not provided please provid relativ file path to read file`
-//             }
-
-//             if (path.isAbsolute(filePath)) {
-//                 return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.`;
-//             }
-
-//             let cleanPath = filePath.replace(/^[/\\]+/, '');
-
-//             const normalizedPath = path.normalize(cleanPath);
-
-//             const { absolutepath, Error } = saftyPath(normalizedPath);
-
-//             if (!absolutepath) {
-//                 return Error
-//             }
-//             const { exsist, isError } = await isFileExsist(absolutepath);
-//             if (!exsist) {
-//                 return `Error occurred: ${isError}`
-//             };
-
-//             const data = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
-
-//             const lines = data.split('\n');
-
-//             endline = endline || startline;
-
-//             if (startline < 1 || endline > lines.length) {
-//                 return `Error: Line number out of range. File has ${lines.length} lines.`;
-//             }
-
-//             const selectedLines = lines
-//                 .slice(startline - 1, endline)
-//                 .map((line, index) => {
-//                     const lineNumber = startline + index;
-//                     return `${lineNumber} | ${line}`;
-//                 })
-//                 .join("\n");
-
-//             return `Selected code from line ${startline} to ${endline}:\n\n${selectedLines}`;
-//         } catch (error) {
-//             if (error instanceof Error) {
-//                 return JSON.stringify({
-//                     Error: error.message
-//                 });
-//             };
-//             return JSON.stringify({
-//                 Error: error
-//             });
-//         }
-//     },
-//     {
-//         name: "search_in_file",
-//         description: "Search the specific part or lines of code and return them from the given file.",
-//         schema: z.object({
-//             filePath: z.string().describe("relativ path of the file to search in"),
-//             startline: z.number().describe("The number of the initial line from where to start taking the code"),
-//             endline: z.number().optional().describe("The line number up to which the code needs to be taken is optional, because sometimes you may only need to take a single line.")
-//         })
-//     }
-// );
-
-// console.log(await search_in_file.invoke({ filePath: "index.txt", startline: 23, endline: 40 }));
-
-// ✅
-// export const delete_in_file = tool(
-//     async ({ filePath, startline, endline, }) => {
-
-//         try {
-//             if (!filePath) {
-//                 return `File path is not provided please provid relativ file path to read file`
-//             }
-
-//             if (path.isAbsolute(filePath)) {
-//                 return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.`;
-//             }
-
-//             let cleanPath = filePath.replace(/^[/\\]+/, '');
-
-//             const normalizedPath = path.normalize(cleanPath);
-
-//             const { absolutepath, Error } = saftyPath(normalizedPath);
-
-//             if (!absolutepath) {
-//                 return Error
-//             }
-//             const { exsist, isError } = await isFileExsist(absolutepath);
-//             if (!exsist) {
-//                 return `Error occurred: ${isError}`
-//             };
-
-//             const data = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
-
-//             const lines = data.split('\n');
-
-//             endline = endline || startline;
-
-
-//             if (startline < 1 || endline > lines.length) {
-//                 return `Error: Line number out of range. File has ${lines.length} lines.`;
-//             }
-
-//             const beforelines = lines.slice(0, startline - 1).join('\n').trim();
-//             const afterlines = lines.slice(endline).join('\n').trim();
-
-
-//             const finallines = [beforelines, afterlines];
-
-//             // write updated content
-
-//             await fs.promises.writeFile(absolutepath, finallines.join('\n\n'));
-
-//             return `Success: Deleted lines ${startline} to ${endline} in ${filePath}`
-
-//         } catch (error) {
-//             if (error instanceof Error) {
-//                 return JSON.stringify({
-//                     Error: error.message
-//                 });
-//             };
-//             return JSON.stringify({
-//                 Error: error
-//             });
-//         }
-
-//     },
-//     {
-//         name: "delete_in_file",
-//         description: "delete the specific lines of the file's content",
-//         schema: z.object({
-//             filePath: z.string().describe("relative filepath of the file in which have to delete code"),
-//             startline: z.number().describe("The number of the initial line from where to start deleting the code"),
-//             endline: z.number().optional().describe("The line number up to which the code needs to be delete. this is optional, Because it may be necessary to delete just one line")
-//         })
-//     }
-// );
-
-// console.log(await delete_in_file.invoke({ filePath: "experiment.ts", startline: 103, endline: 105 }));
 
 // ✅
 export const edit_file = tool(
-    async ({ filePath, startline, endline, newcode }) => {
+    async ({ file_path, old_string, new_string, replace_all }) => {
+
         try {
-            if (!filePath) {
-                return `File path is not provided please provid relativ file path to read file`
-            }
+            let content = "";
+            const absolutepath = path.resolve(file_path);
 
-            if (path.isAbsolute(filePath)) {
-                return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.`;
-            }
-
-            if (!newcode) {
-                return `newcode is not provided to edit! , please provide newcode.`
-            }
-
-            let cleanPath = filePath.replace(/^[/\\]+/, '');
-
-            const normalizedPath = path.normalize(cleanPath);
-
-            const { absolutepath, Error } = saftyPath(normalizedPath);
-
-            if (!absolutepath) {
-                return Error
-            }
             const { exsist, isError } = await isFileExsist(absolutepath);
-            if (!exsist) {
-                return `Error occurred: ${isError}`
+
+            if (isError) {
+                return JSON.stringify({ error: `filepath does not exsist ${isError}` })
             };
 
+            content = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
 
-            const data = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
+            const occurrences = content.split(old_string).length - 1;
 
-            const lines = data.split('\n');
+            if (occurrences === 0) {
+                return `Error: String not found in file: '${old_string}'`;
+            };
 
-            endline = endline || startline;
+            if (occurrences > 1 && !replace_all) {
+                return `Error: String '${old_string}' has multiple occurrences (appears ${occurrences} times) in file. Use replace_all=True to replace all instances, or provide a more specific string with surrounding context.`;
+            };
 
+            if (content === "" && old_string === "") {
+                await fs.promises.writeFile(absolutepath, new_string);
+                return `succsesfully replaced old_string with new_string`
+            };
 
-            if (startline < 1 || endline > lines.length) {
-                return `Error: Line number out of range. File has ${lines.length} lines.`;
-            }
+            const newcode = content.split(old_string).join(new_string);
 
-            const beforelines = lines.slice(0, startline - 1);
-            const afterlines = lines.slice(endline);
+            await fs.promises.writeFile(absolutepath, newcode);
 
-            const newlines = newcode.split('\n');
+            return `succsesfully replaced old_string with new_string`
 
-            const finallines = [...beforelines, ...newlines, ...afterlines];
-
-            // write updated content
-
-            await fs.promises.writeFile(absolutepath, finallines.join('\n'));
-
-            return `Success: Updated lines ${startline} to ${endline} in ${filePath}`
         } catch (error) {
             if (error instanceof Error) {
-                return JSON.stringify({
-                    Error: error.message
-                });
-            };
-            return JSON.stringify({
-                Error: error
-            })
+                return `error: ${error.message}`
+            }
+            return `error: ${error}`;
         }
     },
     {
         name: "edit_file",
-        description: "it replace the old code with given new code. if you have to change just one line so do not give endline",
-        schema: z.object({
-            filePath: z.string().describe("relative file path for replacment"),
-            startline: z.number().describe("The number of the initial line from where to start changing the code"),
-            endline: z.number().optional().describe("The line number up to which the code needs to be changed. this is optional, Because it may be necessary to change just one line"),
-            newcode: z.string().describe("new code for replacment")
-        })
-    }
-);
+        description: `Performs exact string replacements in files.
 
-// console.log(await edit_file.invoke({
-//     filePath: "prakash/banwari/index.txt", startline: 10, newcode: `
-//     function dothis(name: string) {
-//       console.log("hello" + name);
-//     };` }));
+Usage:
+- You must read the file before editing or already know its contents. This tool will throw an error if you try to edit without context. If you just wrote the file, you can edit it since you already know its content.
+- When editing, preserve the exact indentation (tabs/spaces) from the read output. Never include line number prefixes in old_string or new_string.
+- ALWAYS prefer editing existing files over creating new ones.
+- Only use emojis if the user explicitly requests it.`,
+        schema: z.object({
+            file_path: z.string().describe("relative path to the file to edit"),
+            old_string: z
+                .string()
+                .describe("String to be replaced (must match exactly)"),
+            new_string: z.string().describe("String to replace with"),
+            replace_all: z
+                .boolean()
+                .optional()
+                .default(false)
+                .describe("Whether to replace all occurrences"),
+        }),
+    },
+);
 
 // ✅
 export const run_shell_command = tool(
@@ -606,31 +446,3 @@ Here are the web links for additional knowledge:
         })
     }
 );
-
-// export const web_search = tool(
-//     async ({ query }) => {
-//         try {
-
-//             const tvly = tavily({ apiKey: "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" });
-//             const response = await tvly.search(query);
-//             return JSON.stringify(response.results[0]);
-
-//         } catch (error) {
-//             if (error instanceof Error) {
-//                 return JSON.stringify({
-//                     Error: error.message
-//                 })
-//             }
-//             return JSON.stringify({
-//                 Error: error
-//             });
-//         }
-//     },
-//     {
-//         name: "web_search",
-//         description: `The **Web Search Tool** provides fresh, up-to-date, and accurate information from the internet, making it the ideal choice whenever you need the latest data, reliable facts, or step-by-step guidance. Use it to stay informed on current topics, explore new knowledge, or follow practical tutorials—for example, *how to install Tailwind CSS with React*—ensuring you always have the most precise and relevant information at your fingertips.`,
-//         schema: z.object({
-//             query: z.string().describe("query for search about")
-//         })
-//     }
-// );
