@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from "node:path";
 import { spawn, exec } from 'node:child_process';
 import stripAnsi from 'strip-ansi';
-import { tavily } from '@tavily/core';
+// import { tavily } from '@tavily/core';
 import kill from 'tree-kill';
 
 const patterns = [
@@ -200,147 +200,147 @@ If the mode is ""append**, new content is added to the end of the file without o
 
 // console.log(await write_File.invoke({filePath:"index.txt",content:"hy how are you"}));
 
-export const search_in_file = tool(
-    async ({ filePath, startline, endline }) => {
-        try {
+// export const search_in_file = tool(
+//     async ({ filePath, startline, endline }) => {
+//         try {
 
-            if (!filePath) {
-                return `File path is not provided please provid relativ file path to read file`
-            }
+//             if (!filePath) {
+//                 return `File path is not provided please provid relativ file path to read file`
+//             }
 
-            if (path.isAbsolute(filePath)) {
-                return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.`;
-            }
+//             if (path.isAbsolute(filePath)) {
+//                 return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.`;
+//             }
 
-            let cleanPath = filePath.replace(/^[/\\]+/, '');
+//             let cleanPath = filePath.replace(/^[/\\]+/, '');
 
-            const normalizedPath = path.normalize(cleanPath);
+//             const normalizedPath = path.normalize(cleanPath);
 
-            const { absolutepath, Error } = saftyPath(normalizedPath);
+//             const { absolutepath, Error } = saftyPath(normalizedPath);
 
-            if (!absolutepath) {
-                return Error
-            }
-            const { exsist, isError } = await isFileExsist(absolutepath);
-            if (!exsist) {
-                return `Error occurred: ${isError}`
-            };
+//             if (!absolutepath) {
+//                 return Error
+//             }
+//             const { exsist, isError } = await isFileExsist(absolutepath);
+//             if (!exsist) {
+//                 return `Error occurred: ${isError}`
+//             };
 
-            const data = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
+//             const data = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
 
-            const lines = data.split('\n');
+//             const lines = data.split('\n');
 
-            endline = endline || startline;
+//             endline = endline || startline;
 
-            if (startline < 1 || endline > lines.length) {
-                return `Error: Line number out of range. File has ${lines.length} lines.`;
-            }
+//             if (startline < 1 || endline > lines.length) {
+//                 return `Error: Line number out of range. File has ${lines.length} lines.`;
+//             }
 
-            const selectedLines = lines
-                .slice(startline - 1, endline)
-                .map((line, index) => {
-                    const lineNumber = startline + index;
-                    return `${lineNumber} | ${line}`;
-                })
-                .join("\n");
+//             const selectedLines = lines
+//                 .slice(startline - 1, endline)
+//                 .map((line, index) => {
+//                     const lineNumber = startline + index;
+//                     return `${lineNumber} | ${line}`;
+//                 })
+//                 .join("\n");
 
-            return `Selected code from line ${startline} to ${endline}:\n\n${selectedLines}`;
-        } catch (error) {
-            if (error instanceof Error) {
-                return JSON.stringify({
-                    Error: error.message
-                });
-            };
-            return JSON.stringify({
-                Error: error
-            });
-        }
-    },
-    {
-        name: "search_in_file",
-        description: "Search the specific part or lines of code and return them from the given file.",
-        schema: z.object({
-            filePath: z.string().describe("relativ path of the file to search in"),
-            startline: z.number().describe("The number of the initial line from where to start taking the code"),
-            endline: z.number().optional().describe("The line number up to which the code needs to be taken is optional, because sometimes you may only need to take a single line.")
-        })
-    }
-);
+//             return `Selected code from line ${startline} to ${endline}:\n\n${selectedLines}`;
+//         } catch (error) {
+//             if (error instanceof Error) {
+//                 return JSON.stringify({
+//                     Error: error.message
+//                 });
+//             };
+//             return JSON.stringify({
+//                 Error: error
+//             });
+//         }
+//     },
+//     {
+//         name: "search_in_file",
+//         description: "Search the specific part or lines of code and return them from the given file.",
+//         schema: z.object({
+//             filePath: z.string().describe("relativ path of the file to search in"),
+//             startline: z.number().describe("The number of the initial line from where to start taking the code"),
+//             endline: z.number().optional().describe("The line number up to which the code needs to be taken is optional, because sometimes you may only need to take a single line.")
+//         })
+//     }
+// );
 
 // console.log(await search_in_file.invoke({ filePath: "index.txt", startline: 23, endline: 40 }));
 
 // ✅
-export const delete_in_file = tool(
-    async ({ filePath, startline, endline, }) => {
+// export const delete_in_file = tool(
+//     async ({ filePath, startline, endline, }) => {
 
-        try {
-            if (!filePath) {
-                return `File path is not provided please provid relativ file path to read file`
-            }
+//         try {
+//             if (!filePath) {
+//                 return `File path is not provided please provid relativ file path to read file`
+//             }
 
-            if (path.isAbsolute(filePath)) {
-                return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.`;
-            }
+//             if (path.isAbsolute(filePath)) {
+//                 return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.`;
+//             }
 
-            let cleanPath = filePath.replace(/^[/\\]+/, '');
+//             let cleanPath = filePath.replace(/^[/\\]+/, '');
 
-            const normalizedPath = path.normalize(cleanPath);
+//             const normalizedPath = path.normalize(cleanPath);
 
-            const { absolutepath, Error } = saftyPath(normalizedPath);
+//             const { absolutepath, Error } = saftyPath(normalizedPath);
 
-            if (!absolutepath) {
-                return Error
-            }
-            const { exsist, isError } = await isFileExsist(absolutepath);
-            if (!exsist) {
-                return `Error occurred: ${isError}`
-            };
+//             if (!absolutepath) {
+//                 return Error
+//             }
+//             const { exsist, isError } = await isFileExsist(absolutepath);
+//             if (!exsist) {
+//                 return `Error occurred: ${isError}`
+//             };
 
-            const data = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
+//             const data = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
 
-            const lines = data.split('\n');
+//             const lines = data.split('\n');
 
-            endline = endline || startline;
-
-
-            if (startline < 1 || endline > lines.length) {
-                return `Error: Line number out of range. File has ${lines.length} lines.`;
-            }
-
-            const beforelines = lines.slice(0, startline - 1).join('\n').trim();
-            const afterlines = lines.slice(endline).join('\n').trim();
+//             endline = endline || startline;
 
 
-            const finallines = [beforelines, afterlines];
+//             if (startline < 1 || endline > lines.length) {
+//                 return `Error: Line number out of range. File has ${lines.length} lines.`;
+//             }
 
-            // write updated content
+//             const beforelines = lines.slice(0, startline - 1).join('\n').trim();
+//             const afterlines = lines.slice(endline).join('\n').trim();
 
-            await fs.promises.writeFile(absolutepath, finallines.join('\n\n'));
 
-            return `Success: Deleted lines ${startline} to ${endline} in ${filePath}`
+//             const finallines = [beforelines, afterlines];
 
-        } catch (error) {
-            if (error instanceof Error) {
-                return JSON.stringify({
-                    Error: error.message
-                });
-            };
-            return JSON.stringify({
-                Error: error
-            });
-        }
+//             // write updated content
 
-    },
-    {
-        name: "delete_in_file",
-        description: "delete the specific lines of the file's content",
-        schema: z.object({
-            filePath: z.string().describe("relative filepath of the file in which have to delete code"),
-            startline: z.number().describe("The number of the initial line from where to start deleting the code"),
-            endline: z.number().optional().describe("The line number up to which the code needs to be delete. this is optional, Because it may be necessary to delete just one line")
-        })
-    }
-);
+//             await fs.promises.writeFile(absolutepath, finallines.join('\n\n'));
+
+//             return `Success: Deleted lines ${startline} to ${endline} in ${filePath}`
+
+//         } catch (error) {
+//             if (error instanceof Error) {
+//                 return JSON.stringify({
+//                     Error: error.message
+//                 });
+//             };
+//             return JSON.stringify({
+//                 Error: error
+//             });
+//         }
+
+//     },
+//     {
+//         name: "delete_in_file",
+//         description: "delete the specific lines of the file's content",
+//         schema: z.object({
+//             filePath: z.string().describe("relative filepath of the file in which have to delete code"),
+//             startline: z.number().describe("The number of the initial line from where to start deleting the code"),
+//             endline: z.number().optional().describe("The line number up to which the code needs to be delete. this is optional, Because it may be necessary to delete just one line")
+//         })
+//     }
+// );
 
 // console.log(await delete_in_file.invoke({ filePath: "experiment.ts", startline: 103, endline: 105 }));
 

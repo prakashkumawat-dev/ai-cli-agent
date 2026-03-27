@@ -1,5 +1,5 @@
 import React, { useState, memo, useEffect, useRef } from 'react';
-import { Box, Text, useStdout, Newline, useApp, useInput } from 'ink';
+import { Box, Text, useStdout, useApp, useInput } from 'ink';
 import { StateGraph, Command, interrupt, END, START, MemorySaver } from '@langchain/langgraph';
 import type { LangGraphRunnableConfig } from '@langchain/langgraph'
 import { TextInput, PasswordInput, StatusMessage, Select, Spinner } from '@inkjs/ui';
@@ -9,7 +9,7 @@ import path from 'node:path';
 import { readFile, appendFile } from 'node:fs/promises';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { SYSTEM_PROMPT1 } from './agent/system.js';
-import { write_file, read_file, edit_file, delete_in_file, search_in_file, run_shell_command, ispowershell } from './agent/tool.js';
+import { write_file, read_file, edit_file, run_shell_command, ispowershell } from './agent/tool.js';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
 import MessagesList from './messageslist.js';
 import { v4 as uuid } from 'uuid';
@@ -155,18 +155,14 @@ const App = memo(() => {
     const apisubmit = (value: string) => {
         if (promiseApi.index < promiseApi.keynames?.length - 1) {
             apiRef.current.push(value);
-            // if (size.height !== undefined) {
-            //     setSize(prev => ({ ...prev, height: undefined }));
-            // }
+
             SetpromiseApi(prev => ({ ...prev, index: prev.index + 1 }));
         }
         else {
             if (promiseApi.index == promiseApi.keynames?.length - 1) {
                 apiRef.current.push(value);
                 promiseApi.resolve(apiRef.current);
-                // if (size.height !== undefined) {
-                //     setSize(prev => ({ ...prev, height: undefined }));
-                // }
+
                 SetpromiseApi({ shouldshow: false, keynames: [], index: 0, resolve: null });
                 apiRef.current = [];
             }
@@ -178,18 +174,14 @@ const App = memo(() => {
         if (ToolPermissions.index < ToolPermissions.toolinfo.length - 1) {
             const obj: Grant = { permission: value, toolName: (ToolPermissions.toolinfo[ToolPermissions.index] as tooltype).name };
             storeRef.current.push(obj);
-            // if (size.height !== undefined) {
-            //     setSize(prev => ({ ...prev, height: undefined }));
-            // }
+
             SetToolPermissions(prev => ({ ...prev, index: prev.index + 1 }));
         } else {
             if (ToolPermissions.index == ToolPermissions.toolinfo.length - 1) {
                 const obj: Grant = { permission: value, toolName: (ToolPermissions.toolinfo[ToolPermissions.index] as tooltype).name };
                 storeRef.current.push(obj);
                 ToolPermissions.resolve(storeRef.current);
-                // if (size.height !== undefined) {
-                //     setSize(prev => ({ ...prev, height: undefined }));
-                // }
+
                 SetToolPermissions({ index: 0, shouldshow: false, toolinfo: [], resolve: null });
                 storeRef.current = [];
             }
@@ -200,18 +192,14 @@ const App = memo(() => {
 
     const showinput = (query: string[]): Promise<string[]> => {
         return new Promise((resolve, reject) => {
-            // if (size.height !== undefined) {
-            //     setSize(prev => ({ ...prev, height: undefined }));
-            // }
+
             SetpromiseApi(prev => ({ ...prev, shouldshow: true, keynames: query, resolve }))
         });
     };
 
     const getPermissions = (tools: tooltype[]) => {
         return new Promise((resolve, reject) => {
-            // if (size.height !== undefined) {
-            //     setSize(prev => ({ ...prev, height: undefined }));
-            // }
+
             SetToolPermissions(prev => ({ ...prev, shouldshow: true, resolve, toolinfo: tools }))
         })
     };
@@ -271,8 +259,6 @@ const App = memo(() => {
     const invoketools = {
         // "web_search": web_search,
         "write_file": write_file,
-        "search_in_file": search_in_file,
-        "delete_in_file": delete_in_file,
         "edit_file": edit_file,
         "set_api_keys": set_api_keys,
         "run_shell_command": run_shell_command,
@@ -309,13 +295,10 @@ const App = memo(() => {
                 const chatllm = new ChatGoogleGenerativeAI({
                     apiKey: keyRef.current.GEMINI_API_KEY,
                     model: "gemini-3-flash-preview"
-                }).bindTools([run_shell_command, read_file, write_file, edit_file, delete_in_file, search_in_file, set_api_keys]);
+                }).bindTools([run_shell_command, read_file, write_file, edit_file, set_api_keys]);
 
                 const responce = await chatllm.invoke([...state.messageList]);
 
-                // if (size.height !== undefined) {
-                //     setSize(prev => ({ ...prev, height: undefined }));
-                // };
 
                 SetInfoMessage({ message: `ai gave responce from if block`, shouldshow: true, type: "info" });
 
@@ -340,13 +323,10 @@ const App = memo(() => {
                     const chatllm = new ChatGoogleGenerativeAI({
                         apiKey: keys.GEMINI_API_KEY,
                         model: "gemini-3-flash-preview"
-                    }).bindTools([run_shell_command, read_file, write_file, edit_file, delete_in_file, search_in_file, set_api_keys]);
+                    }).bindTools([run_shell_command, read_file, write_file, edit_file, set_api_keys]);
 
                     const responce = await chatllm.invoke([...state.messageList]);
 
-                    // if (size.height !== undefined) {
-                    //     setSize(prev => ({ ...prev, height: undefined }));
-                    // };
 
                     SetInfoMessage({ message: `ai gave responce from else block`, shouldshow: true, type: "info" });
 
@@ -390,9 +370,7 @@ const App = memo(() => {
 
     const filtertool = async (state: z.infer<typeof State>) => {
         try {
-            // if (size.height !== undefined) {
-            //     setSize(prev => ({ ...prev, height: undefined }));
-            // };
+
             SetInfoMessage({ message: `⛏️ i am from filtertool NODE`, shouldshow: true, type: "info" });
             const lastmsg = state.messageList[state.messageList.length - 1];
             const toollist: ToolCall[] = lastmsg.tool_calls;
@@ -448,9 +426,7 @@ const App = memo(() => {
         const permissionsOfUsers: Grant[] = interrupt(state.requiredToolsForPermision);
 
         try {
-            // if (size.height !== undefined) {
-            //     setSize(prev => ({ ...prev, height: undefined }));
-            // };
+
             SetInfoMessage({ message: `i am from getpermission NODE`, shouldshow: true, type: "info" });
             const allowed_tools_for_this_session: string[] = [];
             const cancled_tools = [];
@@ -492,9 +468,7 @@ const App = memo(() => {
 
     const toolExecuter = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
         try {
-            // if (size.height !== undefined) {
-            //     setSize(prev => ({ ...prev, height: undefined }));
-            // };
+
             SetInfoMessage({ message: `iam from toolExecuter NODE`, shouldshow: true, type: "info" });
             const lastmsg = state.messageList[state.messageList.length - 1];
             const toollist: ToolCall[] = lastmsg.tool_calls;
@@ -506,9 +480,7 @@ const App = memo(() => {
                 const toolsresponce = await (invoketools as any)[element.name].invoke(element.args);
                 ToolOutput.push(new ToolMessage({ name: element.name, tool_call_id: element.id, content: toolsresponce }));
 
-                // if (size.height !== undefined) {
-                //     setSize(prev => ({ ...prev, height: undefined }));
-                // }
+
                 setMessages(prev => ({
                     ...prev,
                     message: [
@@ -580,9 +552,6 @@ const App = memo(() => {
         };
 
         if (trimedInput) {
-            // if (size.height !== undefined) {
-            //     setSize(prev => ({ ...prev, height: undefined }));
-            // };
 
             setStatus(prev => ({ ...prev, shouldshow: true }));
             setShowInputBox(false);
@@ -626,15 +595,11 @@ const App = memo(() => {
                             setTokens(prev => prev + value.tokenUsed);
                         }
                         if (value.status && "status" in value) {
-                            // if (size.height !== undefined) {
-                            //     setSize(prev => ({ ...prev, height: undefined }));
-                            // }
+
                             setStatus(prev => ({ ...prev, message: value.status }));
                         }
                         if (value.toolCancled && "toolCancled" in value) {
-                            // if (size.height !== undefined) {
-                            //     setSize(prev => ({ ...prev, height: undefined }));
-                            // }
+
                             SetInfoMessage({ message: JSON.stringify({ cancled_tools: value.toolCancled }), shouldshow: true, type: "info" })
                         }
                     } else {
@@ -647,9 +612,6 @@ const App = memo(() => {
                             for (const [feild, obj_value] of Object.entries(value)) {
                                 if ("finalResponce" in obj_value) {
 
-                                    // if (size.height !== undefined) {
-                                    //     setSize(prev => ({ ...prev, height: undefined }));
-                                    // }
 
                                     setMessages(prev => ({
                                         ...prev,
@@ -666,9 +628,7 @@ const App = memo(() => {
                                     setShowInputBox(true);
                                 }
                                 if ("errorLogs" in obj_value) {
-                                    // if (size.height !== undefined) {
-                                    //     setSize(prev => ({ ...prev, height: undefined }));
-                                    // }
+
                                     SetInfoMessage({ message: obj_value.errorLogs, shouldshow: true, type: "error" });
                                     setStatus({ shouldshow: false, message: "Thinking..." });
                                     // exit();
