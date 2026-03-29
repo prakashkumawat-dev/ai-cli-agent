@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { readFile, appendFile } from 'node:fs/promises';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { SYSTEM_PROMPT1 } from './agent/system.js';
+import { SYSTEM_PROMPT1, LLM_TOOL_SELECTOR_SYSTEM_PROMPT } from './agent/system.js';
 import { write_file, read_file, edit_file, run_shell_command, ispowershell } from './agent/tool.js';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
 import MessagesList from './messageslist.js';
@@ -134,6 +134,9 @@ const App = memo(() => {
             const filepath = path.join(os.homedir(), 'my-cli/config.json');
             const data = await readFile(filepath, { encoding: "utf-8" });
             const keys: { GEMINI_API_KEY: string, TAVILY_API_KEY: string } = JSON.parse(data);
+
+            keyRef.current.GEMINI_API_KEY = keys.GEMINI_API_KEY;
+            keyRef.current.TAVILY_API_KEY = keys.TAVILY_API_KEY;
 
             return {
                 GEMINI_API_KEY: keys.GEMINI_API_KEY,
@@ -265,14 +268,16 @@ const App = memo(() => {
         "read_file": read_file
     };
 
-    // ----------------------Graph creation-----------------------
+    // ---------------------- main Graph state-----------------------
 
     const State = z.object({
         messageList: z.array(z.any()),
         errorLogs: z.string().optional(),
         finalResponce: z.string().optional(),
         allowedToolsForSession: z.array(z.any()).optional(),
-        requiredToolsForPermision: z.array(z.any()).optional()
+        requiredToolsForPermision: z.array(z.any()).optional(),
+        relevantTools: z.array(z.any()).optional(),
+        humanMsgId: z.string().default("initial#2421(*^").optional()
     });
 
     interface Usage_metadata {
@@ -288,69 +293,127 @@ const App = memo(() => {
         "read_file": "read_file"
     };
 
-    const mockllm = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
+    //---------------------------relevant tool selector node---------------------------
+
+    const toolSelectorOutputSchema = z.array(z.string());
+
+    const toolselector = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
         try {
-            if (keyRef.current.GEMINI_API_KEY && keyRef.current.TAVILY_API_KEY) {
-
-                const chatllm = new ChatGoogleGenerativeAI({
-                    apiKey: keyRef.current.GEMINI_API_KEY,
-                    model: "gemini-3-flash-preview"
-                }).bindTools([run_shell_command, read_file, write_file, edit_file, set_api_keys]);
-
-                const responce = await chatllm.invoke([...state.messageList]);
-
-
-                SetInfoMessage({ message: `ai gave responce from if block`, shouldshow: true, type: "info" });
-
-                if (config.writer && responce.usage_metadata) {
-                    config.writer({
-                        tokenUsed: (responce.usage_metadata as Usage_metadata).total_tokens,
-                    });
+            let human_msg: any;
+            for (const element of state.messageList) {
+                if (HumanMessage.isInstance(element)) {
+                    human_msg = element;
                 }
+            };
 
-                if (responce.tool_calls && responce.tool_calls.length > 0) {
-                    const Aimsg = new AIMessage({ content: responce.content, tool_calls: responce.tool_calls });
-                    return new Command({ goto: "filtertool", update: { messageList: [...state.messageList, Aimsg] } });
-                }
-                else {
-                    const Aimsg = new AIMessage({ content: responce.content });
-                    return new Command({ goto: END, update: { messageList: [...state.messageList, Aimsg], finalResponce: responce.content } });
-                }
-
+            if (human_msg.id === state.humanMsgId) {
+                return new Command({ goto: "mockllm" });
             } else {
-                const keys = await getapikeys();
-                if ("GEMINI_API_KEY" in keys && "TAVILY_API_KEY" in keys) {
-                    const chatllm = new ChatGoogleGenerativeAI({
-                        apiKey: keys.GEMINI_API_KEY,
+                if (keyRef.current.GEMINI_API_KEY && keyRef.current.TAVILY_API_KEY) {
+                    // llm invocation
+                    let selectedTools = [];
+                    const llm = new ChatGoogleGenerativeAI({
+                        apiKey: keyRef.current.GEMINI_API_KEY,
                         model: "gemini-3-flash-preview"
-                    }).bindTools([run_shell_command, read_file, write_file, edit_file, set_api_keys]);
+                    }).withStructuredOutput(toolSelectorOutputSchema, { includeRaw: true });
 
-                    const responce = await chatllm.invoke([...state.messageList]);
+                    const toolRecponse = await llm.invoke([new SystemMessage(LLM_TOOL_SELECTOR_SYSTEM_PROMPT), human_msg]);
 
+                    for (const element of toolRecponse.parsed) {
+                        if (element in invoketools) {
+                            selectedTools.push((invoketools as any)[element]);
+                        }
+                    };
 
-                    SetInfoMessage({ message: `ai gave responce from else block`, shouldshow: true, type: "info" });
-
-                    if (config.writer && responce.usage_metadata) {
+                    if (config.writer && toolRecponse.raw.response_metadata) {
                         config.writer({
-                            tokenUsed: (responce.usage_metadata as Usage_metadata).total_tokens,
+                            tokenUsed: (toolRecponse.raw.response_metadata.tokenUsage as any).totalTokens,
                         });
                     }
 
-                    if (responce.tool_calls && responce.tool_calls.length > 0) {
-                        const Aimsg = new AIMessage({ content: responce.content, tool_calls: responce.tool_calls });
-                        return new Command({ goto: "filtertool", update: { messageList: [...state.messageList, Aimsg] } });
-                    }
-                    else {
-                        const Aimsg = new AIMessage({ content: responce.content });
-                        return new Command({ goto: END, update: { messageList: [...state.messageList, Aimsg], finalResponce: responce.content } });
-                    };
-                }
-                else {
-                    if ("Error" in keys) {
-                        throw new Error(keys.Error)
+                    SetInfoMessage({ message: `ai gave responce from toolselector block llm array responce is ${JSON.stringify(toolRecponse.parsed)} and array is ${JSON.stringify(selectedTools)}`, shouldshow: true, type: "warning" });
+
+                    return new Command({ goto: "mockllm", update: { humanMsgId: human_msg.id, relevantTools: selectedTools } });
+
+                } else {
+                    const api_keys = await getapikeys();
+                    if ("GEMINI_API_KEY" in api_keys && "TAVILY_API_KEY" in api_keys) {
+                        // llm invocation
+                        let selectedTools = [];
+                        const llm = new ChatGoogleGenerativeAI({
+                            apiKey: api_keys.GEMINI_API_KEY,
+                            model: "gemini-3-flash-preview"
+                        }).withStructuredOutput(toolSelectorOutputSchema, { includeRaw: true });
+
+                        const toolRecponse = await llm.invoke([new SystemMessage(LLM_TOOL_SELECTOR_SYSTEM_PROMPT), human_msg]);
+
+                        for (const element of toolRecponse.parsed) {
+                            if (element in invoketools) {
+                                selectedTools.push((invoketools as any)[element]);
+                            }
+                        };
+
+                        if (config.writer && toolRecponse.raw.response_metadata) {
+                            config.writer({
+                                tokenUsed: (toolRecponse.raw.response_metadata.tokenUsage as any).totalTokens,
+                            });
+                        };
+
+                        SetInfoMessage({ message: `ai gave responce from toolselector block llm array responce is ${JSON.stringify(toolRecponse.parsed)} and array is ${JSON.stringify(selectedTools)}`, shouldshow: true, type: "warning" });
+
+                        return new Command({ goto: "mockllm", update: { humanMsgId: human_msg.id, relevantTools: selectedTools } });
+                    } else {
+                        if ("Error" in api_keys) {
+                            throw new Error(api_keys.Error)
+                        }
                     }
                 }
             }
+        } catch (error) {
+            if (error instanceof Error) {
+                return new Command({ goto: END, update: { errorLogs: error.message.toString() } })
+            }
+            else {
+                return new Command({ goto: END, update: { errorLogs: (error as string).toString() } })
+            }
+        }
+
+    }
+
+    const mockllm = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
+        try {
+            let llmModel: any;
+
+            let chatllm: any = new ChatGoogleGenerativeAI({
+                apiKey: keyRef.current.GEMINI_API_KEY as string,
+                model: "gemini-3-flash-preview"
+            });
+
+            llmModel = chatllm;
+
+            if (state.relevantTools && state.relevantTools.length > 0) {
+                llmModel = chatllm.bindTools(state.relevantTools);
+            };
+
+            const responce = await llmModel.invoke([...state.messageList]);
+
+            SetInfoMessage({ message: `ai gave responce from mockllm block and tools is ${JSON.stringify(state.relevantTools)}`, shouldshow: true, type: "info" });
+
+            if (config.writer && responce.usage_metadata) {
+                config.writer({
+                    tokenUsed: (responce.usage_metadata as Usage_metadata).total_tokens,
+                });
+            }
+
+            if (responce.tool_calls && responce.tool_calls.length > 0) {
+                const Aimsg = new AIMessage({ content: responce.content, tool_calls: responce.tool_calls });
+                return new Command({ goto: "filtertool", update: { messageList: [...state.messageList, Aimsg] } });
+            }
+            else {
+                const Aimsg = new AIMessage({ content: responce.content });
+                return new Command({ goto: END, update: { messageList: [...state.messageList, Aimsg], finalResponce: responce.content } });
+            }
+
         } catch (error) {
             if (error instanceof Error) {
                 return new Command({ goto: END, update: { errorLogs: error.message.toString() } })
@@ -507,11 +570,12 @@ const App = memo(() => {
     };
 
     const graph = new StateGraph(State)
+        .addNode("toolselector", toolselector, { ends: [END, "mockllm"] })
         .addNode("mockllm", mockllm, { ends: [END, "filtertool"] })
         .addNode("filtertool", filtertool, { ends: [END, "toolExecuter", "getPermission"] })
         .addNode("getPermission", getPermision, { ends: [END, "toolExecuter"] })
         .addNode("toolExecuter", toolExecuter, { ends: [END, "mockllm"] })
-        .addEdge(START, "mockllm")
+        .addEdge(START, "toolselector")
         .compile({ checkpointer });
 
 
@@ -569,12 +633,12 @@ const App = memo(() => {
             }));
 
             // input message for agent--
-            let input: any = { messageList: [new SystemMessage(SYSTEM_PROMPT1), new HumanMessage(trimedInput)] };
+            let input: any = { messageList: [new SystemMessage(SYSTEM_PROMPT1), new HumanMessage({ content: trimedInput, id: uuid() })] };
 
             const persistancestate = await graph.getState(config);
 
             if (persistancestate.values.messageList) {
-                input = { messageList: [...persistancestate.values.messageList, new HumanMessage(trimedInput)] };
+                input = { messageList: [...persistancestate.values.messageList, new HumanMessage({ content: trimedInput, id: uuid() })] };
             };
 
             // while loop started
