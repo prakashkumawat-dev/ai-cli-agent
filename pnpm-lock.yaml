@@ -17,9 +17,6 @@ importers:
       '@langchain/google':
         specifier: ^0.1.8
         version: 0.1.8(@langchain/core@1.1.36(ws@8.20.0))
-      '@langchain/google-genai':
-        specifier: ^2.1.26
-        version: 2.1.26(@langchain/core@1.1.36(ws@8.20.0))
       '@langchain/langgraph':
         specifier: ^1.2.6
         version: 1.2.6(@langchain/core@1.1.36(ws@8.20.0))(react@19.2.4)(zod@4.3.6)
@@ -73,10 +70,6 @@ packages:
   '@cfworker/json-schema@4.1.1':
     resolution: {integrity: sha512-gAmrUZSGtKc3AiBL71iNWxDsyUC5uMaKKGdvzYsBoTW/xi42JQHl7eKV2OYzCUqvc+D2RCcf7EXY2iCyFIk6og==}
 
-  '@google/generative-ai@0.24.1':
-    resolution: {integrity: sha512-MqO+MLfM6kjxcKoy0p1wRzG3b4ZZXtPI+z2IE26UogS2Cm/XHO+7gGRBh6gcJsOiIVoH93UwKvW4HdgiOZCy9Q==}
-    engines: {node: '>=18.0.0'}
-
   '@inkjs/ui@2.0.0':
     resolution: {integrity: sha512-5+8fJmwtF9UvikzLfph9sA+LS+l37Ij/szQltkuXLOAXwNkBX9innfzh4pLGXIB59vKEQUtc6D4qGvhD7h3pAg==}
     engines: {node: '>=18'}
@@ -86,12 +79,6 @@ packages:
   '@langchain/core@1.1.36':
     resolution: {integrity: sha512-9NWsdzU3uZD13lJwunXK0t6SIwew+UwcbHggW5yUdaiMmzKeNkDpp1lRD6p49N8+D0Vv4qmQBEKB4Ukh2jfnvw==}
     engines: {node: '>=20'}
-
-  '@langchain/google-genai@2.1.26':
-    resolution: {integrity: sha512-202ZBVEIXxKhNbDzktLKSffb9pNfrYBGPV7j54nvAR0uqfoh5reRlX8wmOZEDflojvX/GHc69jTOsc0eZKgRsA==}
-    engines: {node: '>=20'}
-    peerDependencies:
-      '@langchain/core': ^1.1.33
 
   '@langchain/google@0.1.8':
     resolution: {integrity: sha512-MPG7uiDRC0dR3RXGEl7zPXKKWt84bwgWtuW7GVpzwmg6fE+xZId2yUhhcoFIJvqGjay2ER3RG+cf8v9dhg+MtA==}
@@ -750,8 +737,6 @@ snapshots:
 
   '@cfworker/json-schema@4.1.1': {}
 
-  '@google/generative-ai@0.24.1': {}
-
   '@inkjs/ui@2.0.0(ink@6.8.0(@types/react@19.2.14)(react@19.2.4))':
     dependencies:
       chalk: 5.6.2
@@ -779,12 +764,6 @@ snapshots:
       - '@opentelemetry/sdk-trace-base'
       - openai
       - ws
-
-  '@langchain/google-genai@2.1.26(@langchain/core@1.1.36(ws@8.20.0))':
-    dependencies:
-      '@google/generative-ai': 0.24.1
-      '@langchain/core': 1.1.36(ws@8.20.0)
-      uuid: 11.1.0
 
   '@langchain/google@0.1.8(@langchain/core@1.1.36(ws@8.20.0))':
     dependencies:

@@ -1,10 +1,10 @@
 import { tavily } from '@tavily/core';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { ChatGoogle } from '@langchain/google';
 
 export const CheckGeminiApiKey = async (api_key: string) => {
     try {
-        const llm = new ChatGoogleGenerativeAI({
-            model: "gemini-2.5-pro",
+        const llm = new ChatGoogle({
+            model: "gemini-2.5-flash",
             temperature: 0,
             maxRetries: 2,
             apiKey: api_key

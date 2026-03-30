@@ -312,19 +312,14 @@ const App = memo(() => {
             } else {
                 if (keyRef.current.GEMINI_API_KEY && keyRef.current.TAVILY_API_KEY) {
                     // llm invocation
-                    let selectedTools = [];
                     const llm = new ChatGoogle({
                         apiKey: keyRef.current.GEMINI_API_KEY,
                         model: "gemini-3-flash-preview"
                     }).withStructuredOutput(toolSelectorOutputSchema, { includeRaw: true });
 
-                    const toolRecponse = await llm.invoke([new SystemMessage(LLM_TOOL_SELECTOR_SYSTEM_PROMPT), human_msg]);
+                    setStatus({ message: "selecting relevant tools...", shouldshow: true });
 
-                    for (const element of toolRecponse.parsed.relevantTools) {
-                        if (element in invoketools) {
-                            selectedTools.push((invoketools as any)[element]);
-                        }
-                    };
+                    const toolRecponse = await llm.invoke([new SystemMessage(LLM_TOOL_SELECTOR_SYSTEM_PROMPT), human_msg]);
 
                     if (config.writer && toolRecponse.raw.response_metadata) {
                         config.writer({
@@ -332,27 +327,19 @@ const App = memo(() => {
                         });
                     }
 
-                    SetInfoMessage({ message: `ai gave responce from toolselector block llm array responce is ${JSON.stringify(toolRecponse.parsed)} and array is ${JSON.stringify(selectedTools)}`, shouldshow: true, type: "warning" });
-
-                    return new Command({ goto: "mockllm", update: { humanMsgId: human_msg.id, relevantTools: selectedTools } });
+                    return new Command({ goto: "mockllm", update: { humanMsgId: human_msg.id, relevantTools: toolRecponse.parsed.relevantTools } });
 
                 } else {
                     const api_keys = await getapikeys();
                     if ("GEMINI_API_KEY" in api_keys && "TAVILY_API_KEY" in api_keys) {
                         // llm invocation
-                        let selectedTools = [];
                         const llm = new ChatGoogle({
                             apiKey: api_keys.GEMINI_API_KEY,
                             model: "gemini-3-flash-preview"
                         }).withStructuredOutput(toolSelectorOutputSchema, { includeRaw: true });
 
+                        setStatus({ message: "selecting relevant tools...", shouldshow: true });
                         const toolRecponse = await llm.invoke([new SystemMessage(LLM_TOOL_SELECTOR_SYSTEM_PROMPT), human_msg]);
-
-                        for (const element of toolRecponse.parsed.relevantTools) {
-                            if (element in invoketools) {
-                                selectedTools.push((invoketools as any)[element]);
-                            }
-                        };
 
                         if (config.writer && toolRecponse.raw.response_metadata) {
                             config.writer({
@@ -360,9 +347,7 @@ const App = memo(() => {
                             });
                         };
 
-                        SetInfoMessage({ message: `ai gave responce from toolselector block llm array responce is ${JSON.stringify(toolRecponse.parsed)} and array is ${JSON.stringify(selectedTools)}`, shouldshow: true, type: "warning" });
-
-                        return new Command({ goto: "mockllm", update: { humanMsgId: human_msg.id, relevantTools: selectedTools } });
+                        return new Command({ goto: "mockllm", update: { humanMsgId: human_msg.id, relevantTools: toolRecponse.parsed.relevantTools } });
                     } else {
                         if ("Error" in api_keys) {
                             throw new Error(api_keys.Error)
@@ -386,14 +371,25 @@ const App = memo(() => {
     const mockllm = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
         try {
 
-            let chatllm = new ChatGoogle({
+            const chatllm = new ChatGoogle({
                 apiKey: keyRef.current.GEMINI_API_KEY as string,
                 model: "gemini-3-flash-preview"
-            }).bindTools([run_shell_command]);
+            });
 
-            const responce = await chatllm.invoke([...state.messageList]);
+            let llmModel: any = chatllm;
 
-            SetInfoMessage({ message: `ai gave responce from mockllm block and tools is ${JSON.stringify(state.relevantTools)}`, shouldshow: true, type: "info" });
+            if (state.relevantTools && state.relevantTools.length > 0) {
+                let relevant_Tools_for_llm = [];
+
+                for (const element of state.relevantTools) {
+                    if (element in invoketools) {
+                        relevant_Tools_for_llm.push((invoketools as any)[element]);
+                    }
+                };
+                llmModel = chatllm.bindTools(relevant_Tools_for_llm);
+            };
+
+            const responce = await llmModel.invoke([...state.messageList]);
 
             if (config.writer && responce.usage_metadata) {
                 config.writer({
