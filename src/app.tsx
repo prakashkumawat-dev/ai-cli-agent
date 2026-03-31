@@ -389,6 +389,7 @@ const App = memo(() => {
                 llmModel = chatllm.bindTools(relevant_Tools_for_llm);
             };
 
+            setStatus({ shouldshow: true, message: "Thinking..." });
             const responce = await llmModel.invoke([...state.messageList]);
 
             if (config.writer && responce.usage_metadata) {
@@ -687,7 +688,10 @@ const App = memo(() => {
 
                                     SetInfoMessage({ message: obj_value.errorLogs, shouldshow: true, type: "error" });
                                     setStatus({ shouldshow: false, message: "Thinking..." });
-                                    // exit();
+
+                                    setTimeout(() => {
+                                        exit();
+                                    }, 1000);
                                 }
                             }
                         }

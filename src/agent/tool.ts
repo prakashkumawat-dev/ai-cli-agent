@@ -6,6 +6,7 @@ import path from "node:path";
 import { spawn, exec } from 'node:child_process';
 import stripAnsi from 'strip-ansi';
 import kill from 'tree-kill';
+import readline from 'readline/promises';
 
 const patterns = [
     /are you sure/i,
@@ -50,29 +51,6 @@ export const ispowershell = () => {
     });
 };
 
-const saftyPath = (dirPath: string) => {
-    try {
-        const fullPath = path.resolve(process.cwd(), dirPath);
-        return {
-            absolutepath: fullPath,
-            Error: null
-        }
-
-    } catch (error) {
-
-        if (error instanceof Error) {
-            return {
-                absolutepath: null,
-                Error: JSON.stringify({ error: error.message })
-            }
-        }
-        return {
-            absolutepath: null,
-            Error: `${error}`
-        }
-    }
-};
-
 
 const isFileExsist = async (filepath: string) => {
     try {
@@ -89,65 +67,101 @@ const isFileExsist = async (filepath: string) => {
     };
 };
 
-export const read_file = tool(async ({ filepath }) => {
-    try {
-        if (!filepath) {
-            return JSON.stringify({ cause: "error", message: "File path is not provided please provid relativ file path to read file" })
+export const read_file = tool(
+    async ({ file_path, offset, limit }) => {
+        try {
+            if (!file_path) {
+                return JSON.stringify({ cause: "error", message: "File path is not provided please provid relativ file path to read file" })
+            }
+
+            if (path.isAbsolute(file_path)) {
+                return JSON.stringify({ cause: "error", message: "Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead." })
+            }
+
+            let cleanPath = file_path.replace(/^[/\\]+/, '');
+
+            const normalizedPath = path.normalize(cleanPath);
+
+            const absolutepath = path.resolve(normalizedPath);
+
+            const { exsist, isError } = await isFileExsist(absolutepath);
+            if (!exsist) {
+                return JSON.stringify({ cause: "error", message: `${isError}` })
+            };
+
+
+            const input = fs.createReadStream(absolutepath);
+
+            const rl = readline.createInterface({ input, crlfDelay: Infinity });
+
+            let currentLine = 0;
+            let result = [];
+            let OffSet = offset;
+
+            for await (const line of rl) {
+                currentLine++;
+
+                // skip lines until offset
+                if (currentLine <= offset) continue;
+
+                // collect lines
+                OffSet += 1;
+                result.push(`${OffSet}| ${line}`);
+
+                // stop when limit reached
+                if (result.length === limit) {
+                    rl.close();
+                    break;
+                }
+            };
+
+            if (result.length == 0) {
+                return `Warning: the file is empty`
+            }
+
+            // return result.join('\n');
+            return `These are the lines within offset ${offset} to limit ${limit} of filepath: ${file_path}\n\n${result.join('\n')}`
+
+        } catch (error) {
+            if (error instanceof Error) {
+                return `Error: ${error.message}`
+            };
+            return `Error: ${error}`;
         }
-
-        if (path.isAbsolute(filepath)) {
-            return JSON.stringify({ cause: "error", message: "Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead." })
-        }
-
-        let cleanPath = filepath.replace(/^[/\\]+/, '');
-
-        const normalizedPath = path.normalize(cleanPath);
-
-        const { absolutepath, Error } = saftyPath(normalizedPath);
-
-        if (!absolutepath) {
-            return Error
-        };
-
-        const { exsist, isError } = await isFileExsist(absolutepath);
-        if (!exsist) {
-            return JSON.stringify({ cause: "error", message: `${isError}` })
-        };
-
-        const data = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
-
-        const lines = data.split('\n');
-
-        const numbereddata = lines.map((line, index) => {
-            return `${index + 1} | ${line}`;
-        }).join('\n');
-
-        return JSON.stringify({ cause: "success", filedata: numbereddata });
-
-    } catch (error) {
-        if (error instanceof Error) {
-            return JSON.stringify({
-                cause: "error",
-                message: error.message
-            });
-        };
-        return JSON.stringify({
-            cause: "error",
-            message: error
-        });
-    }
-},
+    },
     {
         name: "read_file",
-        description: "This tool reads the file from the provided file path and outputs the file content with line numbers. It must not read the .env file or any other file that can leak user privacy.",
+        description: `Reads the files
+
+This tool reads the file from the provided file path and outputs the file content with line numbers. It do not read the .env file or any other file that can leak user privacy.
+
+Usage:
+- By default, it reads up to 100 lines starting from the beginning of the file
+- **IMPORTANT for large files and codebase exploration**: Use pagination with offset and limit parameters to avoid context overflow
+  - First scan: read_file(path, limit=100) to see file structure
+  - Read more sections: read_file(path, offset=100, limit=200) for next 200 lines
+  - Only omit limit (read full file) when necessary for editing
+- Specify offset and limit: read_file(path, offset=0, limit=100) reads first 100 lines
+- Results are returned with line numbers
+- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
+
+`,
         schema: z.object({
-            filepath: z.string().describe("the relative path of the file. always give ralative path of the file.")
-        })
-    }
+            file_path: z.string().describe("Absolute path to the file to read"),
+            offset: z.coerce
+                .number()
+                .optional()
+                .default(0)
+                .describe("Line offset to start reading from (0-indexed)"),
+            limit: z.coerce
+                .number()
+                .optional()
+                .default(100)
+                .describe("Maximum number of lines to read"),
+        }),
+    },
 );
 
-
-// console.log(await read_File.invoke({ filePath: "//prakash//banwari//index.txt" }));
 
 // ✅
 export const write_file = tool(
