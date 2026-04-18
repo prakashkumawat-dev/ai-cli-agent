@@ -21,6 +21,7 @@
     "@langchain/google": "^0.1.8",
     "@langchain/langgraph": "^1.2.6",
     "@tavily/core": "^0.7.2",
+    "fast-glob": "^3.3.3",
     "ink": "^6.8.0",
     "ink-big-text": "^2.0.0",
     "ink-gradient": "^4.0.0",

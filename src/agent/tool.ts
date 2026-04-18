@@ -3,10 +3,21 @@ import z from 'zod';
 import process from 'node:process';
 import fs from 'node:fs';
 import path from "node:path";
-import { spawn, exec } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import stripAnsi from 'strip-ansi';
 import kill from 'tree-kill';
 import readline from 'readline/promises';
+import fg from 'fast-glob';
+import {
+    RUN_SHELL_COMMAND_DESCRIPTION,
+    EDIT_FILE_DESCRIPTION,
+    GLOB_DESCRIPTION,
+    READ_FILE_DESCRIPTION,
+    WRITE_FILE_DESCRIPTION,
+    ispwshexsist,
+    GREP_DESCRIPTION,
+    WRITE_TODO_DESCRIPTION,
+} from './system.js'
 
 const patterns = [
     /are you sure/i,
@@ -30,8 +41,6 @@ interface PID {
     shell_command: string
 };
 
-let platform = process.platform;
-let ispwshexsist = true;
 
 let processID: PID[] = [];
 
@@ -42,15 +51,6 @@ process.on("exit", (code) => {
         }
     }
 });
-
-export const ispowershell = () => {
-    exec("where powershell", (err, stdout) => {
-        if (err) {
-            ispwshexsist = false;
-        }
-    });
-};
-
 
 const isFileExsist = async (filepath: string) => {
     try {
@@ -67,15 +67,59 @@ const isFileExsist = async (filepath: string) => {
     };
 };
 
+const MIME_TYPES: Record<string, string> = {
+    // images
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".svg": "image/svg+xml",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+
+    // audio
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".aiff": "audio/aiff",
+    ".aac": "audio/aac",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+
+    // video
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mpeg": "video/mpeg",
+    ".mov": "video/quicktime",
+    ".avi": "video/x-msvideo",
+    ".flv": "video/x-flv",
+    ".mpg": "video/mpeg",
+    ".wmv": "video/x-ms-wmv",
+    ".3gpp": "video/3gpp",
+
+    // documents
+    ".pdf": "application/pdf",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx":
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+};
+
+const memory_size = async (file_path: string) => {
+    const responce = await fs.promises.stat(file_path);
+    return responce.size;
+};
+
+const MAX_MEMORY_SIZE = 5242880;
+
 export const read_file = tool(
     async ({ file_path, offset, limit }) => {
         try {
             if (!file_path) {
-                return JSON.stringify({ cause: "error", message: "File path is not provided please provid relativ file path to read file" })
+                return `Error: File path is not provided please provid relativ file path to read file)`
             }
 
             if (path.isAbsolute(file_path)) {
-                return JSON.stringify({ cause: "error", message: "Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead." })
+                return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.)`
             }
 
             let cleanPath = file_path.replace(/^[/\\]+/, '');
@@ -119,7 +163,6 @@ export const read_file = tool(
                 return `Warning: the file is empty`
             }
 
-            // return result.join('\n');
             return `These are the lines within offset ${offset} to limit ${limit} of filepath: ${file_path}\n\n${result.join('\n')}`
 
         } catch (error) {
@@ -131,21 +174,7 @@ export const read_file = tool(
     },
     {
         name: "read_file",
-        description: `Reads the files
-
-This tool reads the file from the provided file path and outputs the file content with line numbers. It do not read the .env file or any other file that can leak user privacy.
-
-Usage:
-- By default, it reads up to 100 lines starting from the beginning of the file
-- **IMPORTANT for large files and codebase exploration**: Use pagination with offset and limit parameters to avoid context overflow
-  - First scan: read_file(path, limit=100) to see file structure
-  - Read more sections: read_file(path, offset=100, limit=200) for next 200 lines
-  - Only omit limit (read full file) when necessary for editing
-- Specify offset and limit: read_file(path, offset=0, limit=100) reads first 100 lines
-- Results are returned with line numbers
-- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
-
-`,
+        description: READ_FILE_DESCRIPTION,
         schema: z.object({
             file_path: z.string().describe("Absolute path to the file to read"),
             offset: z.coerce
@@ -161,7 +190,6 @@ Usage:
         }),
     },
 );
-
 
 // ✅
 export const write_file = tool(
@@ -201,7 +229,7 @@ export const write_file = tool(
     },
     {
         name: "write_file",
-        description: "Writes the provided content to the specified file according to the **mode**. This is useful for writing code files and any files.",
+        description: WRITE_FILE_DESCRIPTION,
         schema: z.object({
             filepath: z.string().describe("The **RELATIVE** path of the file starting from project root. Example: 'src/components/Button.js' or 'package.json'. Do not use absolute paths like 'C:/Users/...'."),
             content: z.string().describe("content that have to be write in the file"),
@@ -259,13 +287,7 @@ export const edit_file = tool(
     },
     {
         name: "edit_file",
-        description: `Performs exact string replacements in files.
-
-Usage:
-- You must read the file before editing or already know its contents. This tool will throw an error if you try to edit without context. If you just wrote the file, you can edit it since you already know its content.
-- When editing, preserve the exact indentation (tabs/spaces) from the read output. Never include line number prefixes in old_string or new_string.
-- ALWAYS prefer editing existing files over creating new ones.
-- Only use emojis if the user explicitly requests it.`,
+        description: EDIT_FILE_DESCRIPTION,
         schema: z.object({
             file_path: z.string().describe("relative path to the file to edit"),
             old_string: z
@@ -412,41 +434,7 @@ export const run_shell_command = tool(
     },
     {
         name: "run_shell_command",
-        description: `## Description
-
-Executes shell commands and returns stdout, stderr, with metadeta.
-
-## When to Use This Tool
-
-Use this tool when:
-
-- You need to install project dependencies , list directoryes , create directoryes ans files.
-- when you need to start the application server (for example, in Vite or Next.js) with **npm run dev** or according package manager. It also lets you check logs and detect errors, which is useful for debugging.
-
-## Strict Rules
-
-- When running scripts to install project dependencies, always use non-interactive flags. This ensures no human confirmation or input is required, as this tool is optimized to run commands in a non-interactive manner.
-- Never run harmful commands.
-- never use this tool for read and write file , and all those commands that returns the long stdout like **ls -r** , because it can create the infinite loop.
-- never list the node_modules like folders because it can create the infinite and endless process.
-- whenever you need to start application server(but not for debuging purpose) **timeout** should be less then 15000 miliseconds.
-- always run commands according the **About system**
-- Sometimes while creating a project, the script only generates the project structure and asks you to run npm i or pnpm i (depending on the package manager). If a folder is created with a package.json inside it, first cd into that folder and then install the dependencies. ex- **npm create vite@latest my-app -- --template react && cd my-app && npm i**.
-- Once the application server starts(dev or any), it should not start again until the user explicitly asks to restart it. because i do not close that connection.
-
-## About system
-
-this is about the system:
-
-- operating system - ${platform}
-- shell - ${platform == "win32" ? ispwshexsist ? "powershell" : "cmd" : platform == "linux" ? "bash" : platform == "darwin" ? "zsh" : "system default"}
-
-## Resources:-
-
-Here are the web links for additional knowledge:
-
-- https://nextjs.org/docs/app/api-reference/cli/create-next-app - This is the official documentation link for Next.js installation commands used in a non-interactive manner.
-- https://www.npmjs.com/package/create-vite - This is the official documentation link for Vite’s npm package, which describes the non-interactive installation commands and flags.`,
+        description: RUN_SHELL_COMMAND_DESCRIPTION,
         schema: z.object({
             command: z.string().describe("command for run"),
             dirpath: z.string().optional().describe("relative path of directory in which have to run command"),
@@ -459,4 +447,178 @@ Here are the web links for additional knowledge:
             )
         })
     }
+);
+
+export const glob = tool(
+    async ({ pattern, directory_path }) => {
+        try {
+
+            if (pattern.startsWith("/")) {
+                pattern = pattern.substring(1);
+            };
+
+            let base_path = path.resolve(process.cwd());
+
+            if (directory_path) {
+                const given_path = path.resolve(directory_path);
+                const { isError } = await isFileExsist(given_path);
+
+                if (isError) {
+                    return `Error: ${isError}`
+                };
+                base_path = given_path;
+            };
+
+            const matches = await fg(pattern, {
+                onlyFiles: true,
+                dot: true,
+                ignore: ["node_modules", "dist"],
+                cwd: base_path
+            });
+
+            if (matches.length === 0) {
+                return `Warning: no such match found`
+            };
+
+            return `Found ${matches.length} matches. Here is the list.\n\n${matches.join('\n')}`;
+        } catch (error) {
+            if (error instanceof Error) {
+                return `Error: ${error.message}`;
+            }
+            return `Error: ${error}`
+        }
+    },
+    {
+        name: "glob",
+        description: GLOB_DESCRIPTION,
+        schema: z.object({
+            pattern: z.string().describe("Glob pattern (e.g., '*.py', '**/*.ts')"),
+            directory_path: z
+                .string()
+                .optional()
+                .describe("relative path to search from , default is current directory"),
+        }),
+    }
+);
+
+const TodoStatus = z
+    .enum(["pending", "in_progress", "completed"])
+    .describe("Status of the todo");
+const TodoSchema = z.object({
+    content: z.string().describe("Content of the todo item"),
+    status: TodoStatus,
+});
+
+export const write_todos = tool(
+    async ({ todos }) => {
+        `Updated todo list to ${JSON.stringify(todos)}`
+    },
+    {
+        name: "write_todos",
+        description: WRITE_TODO_DESCRIPTION,
+        schema: z.object({
+            todos: z.array(TodoSchema).describe("List of todo items to update"),
+        }),
+    }
+);
+
+export const grep = tool(
+    async ({ pattern, directory_path, glob }) => {
+        try {
+            if (!pattern) {
+                return `Error: pattern is not provided`;
+            };
+
+            if (!glob) {
+                return `Error: glob is not provided`;
+            };
+
+            let DIR = path.resolve(process.cwd());
+
+            if (directory_path) {
+                const absolutePath = path.resolve(directory_path);
+                const { exsist, isError } = await isFileExsist(absolutePath);
+                if (isError) {
+                    return `Error: ${isError}`;
+                };
+                DIR = absolutePath;
+            };
+
+            // array of file paths
+
+            const file_paths = await fg(glob, {
+                absolute: false,
+                cwd: DIR,
+                ignore: ["node_modules", "dist"],
+                onlyFiles: true
+            });
+
+            if (file_paths.length === 0) {
+                return `Warning: no such file paths found`
+            };
+
+            const results = [];
+
+            for (const element of file_paths) {
+                if (path.extname(element) in MIME_TYPES) {
+                    continue;
+                };
+
+                const size = await memory_size(path.resolve(element));
+
+                if (size > MAX_MEMORY_SIZE) {
+                    continue;
+                };
+
+                const lines: any = (await fs.promises.readFile(path.resolve(element), { encoding: "utf-8" })).split("\n");
+
+                const matched_content = [];
+
+                for (let index = 0; index < lines.length; index++) {
+                    const line = lines[index];
+
+                    if ((line as string).includes(pattern)) {
+                        matched_content.push(`${index + 1}: ${line.trim()}`);
+                    } else {
+                        continue;
+                    }
+                };
+
+                if (matched_content.length > 0) {
+                    results.push(`${element}\n${matched_content.join("\n")}`);
+                }
+            };
+
+            if (results.length === 0) {
+                return "Warning: no such match found"
+            };
+
+            if (results.length > 20) {
+                return `Error: the greped results are too large please give good and relavent pattern to search for`
+            };
+
+            return `This is the all found results\n\n${results.join("\n\n")}`;
+
+        } catch (error) {
+            if (error instanceof Error) {
+                return `Error: ${error.message}`;
+            } else {
+                return `Error: ${error}`;
+            }
+        }
+    },
+    {
+        name: "grep",
+        description: GREP_DESCRIPTION,
+        schema: z.object({
+            pattern: z.string().describe("literal text to search for"),
+            directory_path: z
+                .string()
+                .optional()
+                .describe("Base path to search from ,default is current directory"),
+            glob: z
+                .string()
+                .describe("glob pattern to filter files (e.g., '*.ts')"),
+        }),
+    },
 );

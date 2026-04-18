@@ -8,8 +8,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { readFile, appendFile } from 'node:fs/promises';
 import { ChatGoogle } from '@langchain/google';
-import { SYSTEM_PROMPT1, LLM_TOOL_SELECTOR_SYSTEM_PROMPT } from './agent/system.js';
-import { write_file, read_file, edit_file, run_shell_command, ispowershell } from './agent/tool.js';
+import { SYSTEM_PROMPT1, LOAD_TOOL_DESCRIPTION } from './agent/system.js';
+import { write_file, read_file, edit_file, run_shell_command, glob, grep, write_todos } from './agent/tool.js';
+import { ispowershell } from './agent/system.js';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
 import MessagesList from './messageslist.js';
 import { v4 as uuid } from 'uuid';
@@ -257,14 +258,77 @@ const App = memo(() => {
             })
         }
     );
-    // ---------------tool binding with tools---------------
+    // ---------------tool binding with object---------------
 
     const invoketools = {
         "write_file": write_file,
         "edit_file": edit_file,
         "set_api_keys": set_api_keys,
         "run_shell_command": run_shell_command,
-        "read_file": read_file
+        "read_file": read_file,
+        "glob": glob,
+        "grep": grep,
+        "write_todos": write_todos,
+    };
+
+    // ------------------------------load_tool-----------------------------
+    const load_tools = tool(
+        async ({ tools }) => {
+            try {
+
+                if (tools.length === 0) {
+                    return `Error: tool names are not provided please provide tool names that you need to use`
+                };
+
+                let results = [];
+
+                for (let index = 0; index < tools.length; index++) {
+                    if ((tools[index] as string) in invoketools) {
+                        const element: any = tools[index];
+                        const tool_name = await (invoketools as any)[element].getName();
+                        const tool_description = await (invoketools as any)[element].description;
+                        const raw_input_schema = z.toJSONSchema((invoketools as any)[element].schema);
+
+                        const { [Object.keys(raw_input_schema)[0] as any]: _, ...rest } = raw_input_schema;
+                        const filtered_input_schema = rest;
+
+                        const Tool_info = {
+                            name: tool_name,
+                            description: tool_description,
+                            parameters: filtered_input_schema
+                        };
+
+                        const json_function_declaration = JSON.stringify(Tool_info);
+                        results.push(`<function>\n${json_function_declaration}\n</function>`);
+                    }
+                };
+
+                if (results.length === 0) {
+                    return `Warning: no tools is avlable according your request`
+                }
+
+                return `These are the tool declaration, you request for\n\n ${results.join('\n\n')}`;
+            } catch (error) {
+                if (error instanceof Error) {
+                    return `Error: ${error.message}`;
+                } else {
+                    return `Error: ${error}`
+                }
+            }
+        },
+        {
+            name: "load_tools",
+            description: LOAD_TOOL_DESCRIPTION,
+            schema: z.object({
+                tools: z.array(z.string()).describe("tool names that you need to use")
+            })
+        }
+    );
+
+    // Combine invoketools and load_tools into a single registry for execution
+    const executableTools = {
+        ...invoketools,
+        "load_tools": load_tools
     };
 
     // ---------------------- main Graph state-----------------------
@@ -292,119 +356,64 @@ const App = memo(() => {
         "read_file": "read_file"
     };
 
-    //---------------------------relevant tool selector node---------------------------
-
-    const toolSelectorOutputSchema = z.object({
-        relevantTools: z.array(z.string())
-    });
-
-    const toolselector = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
-        try {
-            let human_msg: any;
-            for (const element of state.messageList) {
-                if (HumanMessage.isInstance(element)) {
-                    human_msg = element;
-                }
-            };
-
-            if (human_msg.id === state.humanMsgId) {
-                return new Command({ goto: "mockllm" });
-            } else {
-                if (keyRef.current.GEMINI_API_KEY && keyRef.current.TAVILY_API_KEY) {
-                    // llm invocation
-                    const llm = new ChatGoogle({
-                        apiKey: keyRef.current.GEMINI_API_KEY,
-                        model: "gemini-3-flash-preview"
-                    }).withStructuredOutput(toolSelectorOutputSchema, { includeRaw: true });
-
-                    setStatus({ message: "selecting relevant tools...", shouldshow: true });
-
-                    const toolRecponse = await llm.invoke([new SystemMessage(LLM_TOOL_SELECTOR_SYSTEM_PROMPT), human_msg]);
-
-                    if (config.writer && toolRecponse.raw.response_metadata) {
-                        config.writer({
-                            tokenUsed: (toolRecponse.raw.response_metadata.tokenUsage as any).totalTokens,
-                        });
-                    }
-
-                    return new Command({ goto: "mockllm", update: { humanMsgId: human_msg.id, relevantTools: toolRecponse.parsed.relevantTools } });
-
-                } else {
-                    const api_keys = await getapikeys();
-                    if ("GEMINI_API_KEY" in api_keys && "TAVILY_API_KEY" in api_keys) {
-                        // llm invocation
-                        const llm = new ChatGoogle({
-                            apiKey: api_keys.GEMINI_API_KEY,
-                            model: "gemini-3-flash-preview"
-                        }).withStructuredOutput(toolSelectorOutputSchema, { includeRaw: true });
-
-                        setStatus({ message: "selecting relevant tools...", shouldshow: true });
-                        const toolRecponse = await llm.invoke([new SystemMessage(LLM_TOOL_SELECTOR_SYSTEM_PROMPT), human_msg]);
-
-                        if (config.writer && toolRecponse.raw.response_metadata) {
-                            config.writer({
-                                tokenUsed: (toolRecponse.raw.response_metadata.tokenUsage as any).totalTokens,
-                            });
-                        };
-
-                        return new Command({ goto: "mockllm", update: { humanMsgId: human_msg.id, relevantTools: toolRecponse.parsed.relevantTools } });
-                    } else {
-                        if ("Error" in api_keys) {
-                            throw new Error(api_keys.Error)
-                        }
-                    }
-                }
-            }
-        } catch (error) {
-            if (error instanceof Error) {
-                return new Command({ goto: END, update: { errorLogs: error.message.toString() } })
-            }
-            else {
-                return new Command({ goto: END, update: { errorLogs: (error as string).toString() } })
-            }
-        }
-
-    }
 
     // --------------------------------main llm invocation--------------------------------
 
     const mockllm = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
         try {
+            if (keyRef.current.GEMINI_API_KEY && keyRef.current.TAVILY_API_KEY) {
+                const chatllm = new ChatGoogle({
+                    apiKey: keyRef.current.GEMINI_API_KEY as string,
+                    model: "gemini-3-flash-preview"
+                }).bindTools([load_tools]);
 
-            const chatllm = new ChatGoogle({
-                apiKey: keyRef.current.GEMINI_API_KEY as string,
-                model: "gemini-3-flash-preview"
-            });
+                setStatus({ shouldshow: true, message: "Thinking..." });
+                const responce = await chatllm.invoke([...state.messageList]);
 
-            let llmModel: any = chatllm;
+                if (config.writer && responce.usage_metadata) {
+                    config.writer({
+                        tokenUsed: (responce.usage_metadata as Usage_metadata).total_tokens,
+                    });
+                }
 
-            if (state.relevantTools && state.relevantTools.length > 0) {
-                let relevant_Tools_for_llm = [];
+                if (responce.tool_calls && responce.tool_calls.length > 0) {
+                    const Aimsg = new AIMessage({ content: responce.content, tool_calls: responce.tool_calls });
+                    return new Command({ goto: "filtertool", update: { messageList: [...state.messageList, Aimsg] } });
+                }
+                else {
+                    const Aimsg = new AIMessage({ content: responce.content });
+                    return new Command({ goto: END, update: { messageList: [...state.messageList, Aimsg], finalResponce: responce.content } });
+                }
+            } else {
+                const api_keys = await getapikeys();
+                if ("GEMINI_API_KEY" in api_keys && "TAVILY_API_KEY" in api_keys) {
+                    const chatllm = new ChatGoogle({
+                        apiKey: api_keys.GEMINI_API_KEY as string,
+                        model: "gemini-3-flash-preview"
+                    }).bindTools([load_tools]);
 
-                for (const element of state.relevantTools) {
-                    if (element in invoketools) {
-                        relevant_Tools_for_llm.push((invoketools as any)[element]);
+                    setStatus({ shouldshow: true, message: "Thinking..." });
+                    const responce = await chatllm.invoke([...state.messageList]);
+
+                    if (config.writer && responce.usage_metadata) {
+                        config.writer({
+                            tokenUsed: (responce.usage_metadata as Usage_metadata).total_tokens,
+                        });
                     }
-                };
-                llmModel = chatllm.bindTools(relevant_Tools_for_llm);
-            };
 
-            setStatus({ shouldshow: true, message: "Thinking..." });
-            const responce = await llmModel.invoke([...state.messageList]);
-
-            if (config.writer && responce.usage_metadata) {
-                config.writer({
-                    tokenUsed: (responce.usage_metadata as Usage_metadata).total_tokens,
-                });
-            }
-
-            if (responce.tool_calls && responce.tool_calls.length > 0) {
-                const Aimsg = new AIMessage({ content: responce.content, tool_calls: responce.tool_calls });
-                return new Command({ goto: "filtertool", update: { messageList: [...state.messageList, Aimsg] } });
-            }
-            else {
-                const Aimsg = new AIMessage({ content: responce.content });
-                return new Command({ goto: END, update: { messageList: [...state.messageList, Aimsg], finalResponce: responce.content } });
+                    if (responce.tool_calls && responce.tool_calls.length > 0) {
+                        const Aimsg = new AIMessage({ content: responce.content, tool_calls: responce.tool_calls });
+                        return new Command({ goto: "filtertool", update: { messageList: [...state.messageList, Aimsg] } });
+                    }
+                    else {
+                        const Aimsg = new AIMessage({ content: responce.content });
+                        return new Command({ goto: END, update: { messageList: [...state.messageList, Aimsg], finalResponce: responce.content } });
+                    }
+                } else {
+                    if ("Error" in api_keys) {
+                        throw new Error(api_keys.Error)
+                    }
+                }
             }
 
         } catch (error) {
@@ -533,7 +542,7 @@ const App = memo(() => {
                 if (config.writer) {
                     config.writer({ status: `executing the '${element.name}' tool...` });
                 }
-                const toolsresponce = await (invoketools as any)[element.name].invoke(element.args);
+                const toolsresponce = await (executableTools as any)[element.name].invoke(element.args);
                 ToolOutput.push(new ToolMessage({ name: element.name, tool_call_id: element.id, content: toolsresponce }));
 
 
@@ -563,12 +572,12 @@ const App = memo(() => {
     };
 
     const graph = new StateGraph(State)
-        .addNode("toolselector", toolselector, { ends: [END, "mockllm"] })
+        // .addNode("toolselector", toolselector, { ends: [END, "mockllm"] })
         .addNode("mockllm", mockllm, { ends: [END, "filtertool"] })
         .addNode("filtertool", filtertool, { ends: [END, "toolExecuter", "getPermission"] })
         .addNode("getPermission", getPermision, { ends: [END, "toolExecuter"] })
         .addNode("toolExecuter", toolExecuter, { ends: [END, "mockllm"] })
-        .addEdge(START, "toolselector")
+        .addEdge(START, "mockllm")
         .compile({ checkpointer });
 
 

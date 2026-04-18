@@ -96,22 +96,23 @@ const MessagesList = memo(({ list, Size }: { list: MSG, Size: { width: number | 
                                     }
                                         break;
                                     case "read_file": {
-                                        const parseddata: Readfile = JSON.parse(value.message);
-                                        let lines;
-                                        if (parseddata.cause == "success") {
-                                            const totallines = parseddata.filedata.split('\n')
-                                            if (totallines.length > 50) {
-                                                const finallines = totallines.slice(0, 50).join('\n');
-                                                lines = `${finallines}....more`;
-                                            } else {
-                                                lines = parseddata.filedata;
-                                            }
-                                        }
+                                        // const parseddata: Readfile = JSON.parse(value.message);
+                                        // let lines;
+                                        // if (parseddata.cause == "success") {
+                                        //     const totallines = parseddata.filedata.split('\n')
+                                        //     if (totallines.length > 50) {
+                                        //         const finallines = totallines.slice(0, 50).join('\n');
+                                        //         lines = `${finallines}....more`;
+                                        //     } else {
+                                        //         lines = parseddata.filedata;
+                                        //     }
+                                        // }
                                         return (
                                             <Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"round"} borderColor={"#fd7303"}>
                                                 <Text wrap="wrap">{`⛏️  tool output `}<Text wrap="wrap" color={"#ababab"}>{`(${value.toolname})`}</Text></Text>
                                                 <Text color={"#ababab"}><Text color={"#ffffff"}>with args: </Text>{value.toolargs}</Text>
-                                                {parseddata.cause == "error" ? <Text wrap="wrap">{parseddata.message}</Text> : <Text wrap="wrap">{lines}</Text>}
+                                                {/* {parseddata.cause == "error" ? <Text wrap="wrap">{value.message}</Text> : <Text wrap="wrap">{lines}</Text>} */}
+                                                <Text wrap="wrap">{value.message}</Text>
                                             </Box>
                                         )
                                     }
@@ -132,6 +133,13 @@ const MessagesList = memo(({ list, Size }: { list: MSG, Size: { width: number | 
                                         )
                                     }
                                     default:
+                                        return (
+                                            <Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"round"} borderColor={"#fd7303"}>
+                                                <Text wrap="wrap">{`⛏️  tool output `}<Text wrap="wrap" color={"#ababab"}>{`(${value.toolname})`}</Text></Text>
+                                                <Text color={"#ababab"}><Text color={"#ffffff"}>with args:</Text>{value.toolargs}</Text>
+                                                <Text wrap="wrap">{value.message}</Text>
+                                            </Box>
+                                        )
                                         break;
                                 }
                             }
