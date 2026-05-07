@@ -8,12 +8,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { readFile, appendFile } from 'node:fs/promises';
 import { ChatGoogle } from '@langchain/google';
-import { SYSTEM_PROMPT1, LOAD_TOOL_DESCRIPTION } from './agent/system.js';
+import { SYSTEM_PROMPT1, LOAD_TOOL_DESCRIPTION, summarizerSystemPrompt } from './agent/system.js';
 import { write_file, read_file, edit_file, run_shell_command, glob, grep, write_todos } from './agent/tool.js';
 import { ispowershell } from './agent/system.js';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
 import MessagesList from './messageslist.js';
 import { v4 as uuid } from 'uuid';
+import { countTokensApproximately, findSafeCutOff, convertToOpenAiMessageFormat } from './utils/utils.js';
 
 
 interface KeyRef {
@@ -339,8 +340,6 @@ const App = memo(() => {
         finalResponce: z.string().optional(),
         allowedToolsForSession: z.array(z.any()).optional(),
         requiredToolsForPermision: z.array(z.any()).optional(),
-        relevantTools: z.array(z.any()).optional(),
-        humanMsgId: z.string().default("initial#2421(*^").optional()
     });
 
     interface Usage_metadata {
@@ -356,64 +355,101 @@ const App = memo(() => {
         "read_file": "read_file"
     };
 
+    // -----------------------------compact context window-----------------------------
+    const compact = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
+        try {
+            const keys: {
+                GEMINI_API_KEY: string | null,
+                TAVILY_API_KEY: string | null
+            } = {
+                GEMINI_API_KEY: null,
+                TAVILY_API_KEY: null
+            };
+
+
+            if (!keyRef.current.GEMINI_API_KEY && !keyRef.current.TAVILY_API_KEY) {
+                const responce: any = await getapikeys();
+                if (responce.Error) {
+                    return new Command({ goto: END, update: { errorLogs: responce.Error } })
+                } else {
+                    keys.GEMINI_API_KEY = responce.GEMINI_API_KEY;
+                    keys.TAVILY_API_KEY = responce.TAVILY_API_KEY;
+                }
+            } else {
+                keys.GEMINI_API_KEY = keyRef.current.GEMINI_API_KEY;
+                keys.TAVILY_API_KEY = keyRef.current.TAVILY_API_KEY;
+            }
+
+            if (state.messageList.length === 0) {
+                return new Command({ goto: "mockllm" });
+            };
+
+            const total_tokens = countTokensApproximately(state.messageList, [load_tools]);
+            const lenghtOfmessages = state.messageList.length;
+            const DEFAULT_CUTOFF_INDEX = 8;
+
+            if (total_tokens >= 10000 && lenghtOfmessages >= 15) {
+                const SAFE_CUT_OFF = findSafeCutOff(state.messageList, DEFAULT_CUTOFF_INDEX);
+
+                // preserving the system message
+                const preservedSystemPrompt = state.messageList[0];
+
+                // preserving the last messages
+                const preservedMessages = state.messageList.slice(SAFE_CUT_OFF + 1);
+
+                // messages to summarise
+                const messagesTosummarise = state.messageList.slice(1, SAFE_CUT_OFF + 1);
+                const filteredMessages = convertToOpenAiMessageFormat(messagesTosummarise);
+
+                const sumarizerllm = new ChatGoogle({
+                    apiKey: keys.GEMINI_API_KEY as string,
+                    model: "gemini-3-flash-preview",
+                });
+                const generatedSummary = await sumarizerllm.invoke([new SystemMessage(summarizerSystemPrompt), new HumanMessage(`here is the conversation to date\n\n${filteredMessages}`)])
+
+                const human_message = new HumanMessage(`this is the summary of us previews conversation\n\n${generatedSummary.content}`);
+
+                return new Command({ goto: "mockllm", update: { messageList: [preservedSystemPrompt, human_message, ...preservedMessages] } });
+            } else {
+                return new Command({ goto: "mockllm" });
+            }
+
+        } catch (error) {
+            if (error instanceof Error) {
+                return new Command({ goto: END, update: { errorLogs: error.message.toString() } })
+            }
+            else {
+                return new Command({ goto: END, update: { errorLogs: (error as string).toString() } })
+            }
+        }
+    };
 
     // --------------------------------main llm invocation--------------------------------
 
     const mockllm = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
         try {
-            if (keyRef.current.GEMINI_API_KEY && keyRef.current.TAVILY_API_KEY) {
-                const chatllm = new ChatGoogle({
-                    apiKey: keyRef.current.GEMINI_API_KEY as string,
-                    model: "gemini-3-flash-preview"
-                }).bindTools([load_tools]);
 
-                setStatus({ shouldshow: true, message: "Thinking..." });
-                const responce = await chatllm.invoke([...state.messageList]);
+            const chatllm = new ChatGoogle({
+                apiKey: keyRef.current.GEMINI_API_KEY as string,
+                model: "gemini-3-flash-preview"
+            }).bindTools([load_tools]);
 
-                if (config.writer && responce.usage_metadata) {
-                    config.writer({
-                        tokenUsed: (responce.usage_metadata as Usage_metadata).total_tokens,
-                    });
-                }
+            setStatus({ shouldshow: true, message: "Thinking..." });
+            const responce = await chatllm.invoke([...state.messageList]);
 
-                if (responce.tool_calls && responce.tool_calls.length > 0) {
-                    const Aimsg = new AIMessage({ content: responce.content, tool_calls: responce.tool_calls });
-                    return new Command({ goto: "filtertool", update: { messageList: [...state.messageList, Aimsg] } });
-                }
-                else {
-                    const Aimsg = new AIMessage({ content: responce.content });
-                    return new Command({ goto: END, update: { messageList: [...state.messageList, Aimsg], finalResponce: responce.content } });
-                }
-            } else {
-                const api_keys = await getapikeys();
-                if ("GEMINI_API_KEY" in api_keys && "TAVILY_API_KEY" in api_keys) {
-                    const chatllm = new ChatGoogle({
-                        apiKey: api_keys.GEMINI_API_KEY as string,
-                        model: "gemini-3-flash-preview"
-                    }).bindTools([load_tools]);
+            if (config.writer && responce.usage_metadata) {
+                config.writer({
+                    tokenUsed: (responce.usage_metadata as Usage_metadata).total_tokens,
+                });
+            }
 
-                    setStatus({ shouldshow: true, message: "Thinking..." });
-                    const responce = await chatllm.invoke([...state.messageList]);
-
-                    if (config.writer && responce.usage_metadata) {
-                        config.writer({
-                            tokenUsed: (responce.usage_metadata as Usage_metadata).total_tokens,
-                        });
-                    }
-
-                    if (responce.tool_calls && responce.tool_calls.length > 0) {
-                        const Aimsg = new AIMessage({ content: responce.content, tool_calls: responce.tool_calls });
-                        return new Command({ goto: "filtertool", update: { messageList: [...state.messageList, Aimsg] } });
-                    }
-                    else {
-                        const Aimsg = new AIMessage({ content: responce.content });
-                        return new Command({ goto: END, update: { messageList: [...state.messageList, Aimsg], finalResponce: responce.content } });
-                    }
-                } else {
-                    if ("Error" in api_keys) {
-                        throw new Error(api_keys.Error)
-                    }
-                }
+            if (responce.tool_calls && responce.tool_calls.length > 0) {
+                const Aimsg = new AIMessage({ content: responce.content, tool_calls: responce.tool_calls });
+                return new Command({ goto: "filtertool", update: { messageList: [...state.messageList, Aimsg] } });
+            }
+            else {
+                const Aimsg = new AIMessage({ content: responce.content });
+                return new Command({ goto: END, update: { messageList: [...state.messageList, Aimsg], finalResponce: responce.content } });
             }
 
         } catch (error) {
@@ -572,12 +608,12 @@ const App = memo(() => {
     };
 
     const graph = new StateGraph(State)
-        // .addNode("toolselector", toolselector, { ends: [END, "mockllm"] })
+        .addNode("compact", compact, { ends: [END, "mockllm"] })
         .addNode("mockllm", mockllm, { ends: [END, "filtertool"] })
         .addNode("filtertool", filtertool, { ends: [END, "toolExecuter", "getPermission"] })
         .addNode("getPermission", getPermision, { ends: [END, "toolExecuter"] })
-        .addNode("toolExecuter", toolExecuter, { ends: [END, "mockllm"] })
-        .addEdge(START, "mockllm")
+        .addNode("toolExecuter", toolExecuter, { ends: [END, "compact"] })
+        .addEdge(START, "compact")
         .compile({ checkpointer });
 
 
