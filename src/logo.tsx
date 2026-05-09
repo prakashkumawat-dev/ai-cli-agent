@@ -5,7 +5,7 @@ import { memo } from 'react'
 const Logo = memo(() => {
     return (
         <Gradient colors={["#ff6404ff", "#ff6404ff"]}>
-            <BigText align="left" text="HELLO" font="huge" />
+            <BigText align="left" text="kelvin" font="huge" />
         </Gradient>
     )
 });

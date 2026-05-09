@@ -81,7 +81,7 @@ const App = memo(() => {
     const [Tokens, setTokens] = useState<number>(0);
     const [ToolPermissions, SetToolPermissions] = useState<TOOLPER>({ index: 0, shouldshow: false, toolinfo: [] });
     const [Status, setStatus] = useState<STATUS>({ shouldshow: false, message: "Thinking..." });
-    const [Messages, setMessages] = useState<MSG>({ id: "erd", message: [{ id: "Lo8gheMuf", message: "hello", type: "logo" }, { id: "De8sn$", type: "description", message: "build websites,debug your code,test your app,press ctrl + x for exit" }] });
+    const [Messages, setMessages] = useState<MSG>({ id: "erd", message: [{ id: "Lo8gheMuf", message: "kelvin", type: "logo" }, { id: "De8sn$", type: "description", message: "build websites,debug your code,test your app,press ctrl + x for exit" }] });
     const [ShowInputBox, setShowInputBox] = useState<boolean>(true);
 
 
@@ -386,15 +386,14 @@ const App = memo(() => {
 
             const total_tokens = countTokensApproximately(state.messageList, [load_tools]);
             const lenghtOfmessages = state.messageList.length;
-            const DEFAULT_CUTOFF_INDEX = 8;
+            const MESSAGES_TO_KEEP = 10;
 
             if (total_tokens >= 10000 && lenghtOfmessages >= 15) {
-                const SAFE_CUT_OFF = findSafeCutOff(state.messageList, DEFAULT_CUTOFF_INDEX);
 
-                // preserving the system message
+                const SAFE_CUT_OFF = findSafeCutOff(state.messageList, MESSAGES_TO_KEEP);
+
                 const preservedSystemPrompt = state.messageList[0];
 
-                // preserving the last messages
                 const preservedMessages = state.messageList.slice(SAFE_CUT_OFF + 1);
 
                 // messages to summarise
@@ -405,9 +404,12 @@ const App = memo(() => {
                     apiKey: keys.GEMINI_API_KEY as string,
                     model: "gemini-3-flash-preview",
                 });
+
+                SetInfoMessage({ message: `⛏️ i am from compact NODE, total msg = ${lenghtOfmessages}, total_tokens = ${total_tokens}`, shouldshow: true, type: "info" });
+                setStatus({ shouldshow: true, message: "compacting the context window..." });
                 const generatedSummary = await sumarizerllm.invoke([new SystemMessage(summarizerSystemPrompt), new HumanMessage(`here is the conversation to date\n\n${filteredMessages}`)])
 
-                const human_message = new HumanMessage(`this is the summary of us previews conversation\n\n${generatedSummary.content}`);
+                const human_message = new HumanMessage(`this is the summary and memory of us previews conversation\n\n${generatedSummary.content}`);
 
                 return new Command({ goto: "mockllm", update: { messageList: [preservedSystemPrompt, human_message, ...preservedMessages] } });
             } else {
@@ -472,7 +474,7 @@ const App = memo(() => {
     const filtertool = async (state: z.infer<typeof State>) => {
         try {
 
-            SetInfoMessage({ message: `⛏️ i am from filtertool NODE`, shouldshow: true, type: "info" });
+            // SetInfoMessage({ message: `⛏️ i am from filtertool NODE`, shouldshow: true, type: "info" });
             const lastmsg = state.messageList[state.messageList.length - 1];
             const toollist: ToolCall[] = lastmsg.tool_calls;
 
@@ -528,7 +530,7 @@ const App = memo(() => {
 
         try {
 
-            SetInfoMessage({ message: `i am from getpermission NODE`, shouldshow: true, type: "info" });
+            // SetInfoMessage({ message: `i am from getpermission NODE`, shouldshow: true, type: "info" });
             const allowed_tools_for_this_session: string[] = [];
             const cancled_tools = [];
 
@@ -570,7 +572,7 @@ const App = memo(() => {
     const toolExecuter = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
         try {
 
-            SetInfoMessage({ message: `iam from toolExecuter NODE`, shouldshow: true, type: "info" });
+            // SetInfoMessage({ message: `iam from toolExecuter NODE`, shouldshow: true, type: "info" });
             const lastmsg = state.messageList[state.messageList.length - 1];
             const toollist: ToolCall[] = lastmsg.tool_calls;
             const ToolOutput: any = [];
@@ -597,7 +599,7 @@ const App = memo(() => {
                 }));
             };
 
-            return new Command({ goto: "mockllm", update: { messageList: [...state.messageList, ...ToolOutput] } });
+            return new Command({ goto: "compact", update: { messageList: [...state.messageList, ...ToolOutput] } });
         } catch (error) {
             if (error instanceof Error) {
                 return new Command({ goto: END, update: { errorLogs: error.message.toString() } });
