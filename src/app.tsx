@@ -14,7 +14,8 @@ import { ispowershell } from './agent/system.js';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
 import MessagesList from './messageslist.js';
 import { v4 as uuid } from 'uuid';
-import { countTokensApproximately, findSafeCutOff, convertToOpenAiMessageFormat } from './utils/utils.js';
+import { countTokensApproximately, findSafeCutOff, convertToOpenAiMessageFormat, getapikeys } from './utils/utils.js';
+
 
 
 interface KeyRef {
@@ -129,32 +130,6 @@ const App = memo(() => {
         TAVILY_API_KEY: string,
     } | { Error: string };
 
-    // ---------------------getapikeys function---------------------
-
-    const getapikeys = async (): Promise<API> => {
-        try {
-            const filepath = path.join(os.homedir(), 'my-cli/config.json');
-            const data = await readFile(filepath, { encoding: "utf-8" });
-            const keys: { GEMINI_API_KEY: string, TAVILY_API_KEY: string } = JSON.parse(data);
-
-            keyRef.current.GEMINI_API_KEY = keys.GEMINI_API_KEY;
-            keyRef.current.TAVILY_API_KEY = keys.TAVILY_API_KEY;
-
-            return {
-                GEMINI_API_KEY: keys.GEMINI_API_KEY,
-                TAVILY_API_KEY: keys.TAVILY_API_KEY
-            }
-        } catch (error) {
-            if (error instanceof Error) {
-                return {
-                    Error: error.message.toString()
-                }
-            }
-            return {
-                Error: (error as string).toString()
-            }
-        }
-    };
 
     // --------------------handling apisubmit function--------------------
     const apisubmit = (value: string) => {
@@ -374,6 +349,8 @@ const App = memo(() => {
                 } else {
                     keys.GEMINI_API_KEY = responce.GEMINI_API_KEY;
                     keys.TAVILY_API_KEY = responce.TAVILY_API_KEY;
+                    keyRef.current.GEMINI_API_KEY = responce.GEMINI_API_KEY;
+                    keyRef.current.TAVILY_API_KEY = responce.TAVILY_API_KEY
                 }
             } else {
                 keys.GEMINI_API_KEY = keyRef.current.GEMINI_API_KEY;

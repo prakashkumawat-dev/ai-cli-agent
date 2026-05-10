@@ -7,6 +7,9 @@ import {
 } from "@langchain/core/messages";
 import { isLangChainTool } from "@langchain/core/tools";
 import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
+import os from 'node:os';
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 
 
 export function countTokensApproximately(
@@ -158,4 +161,31 @@ export const convertToOpenAiMessageFormat = (messages: BaseMessage[]) => {
     });
 
     return `${modifiedList.map((value) => JSON.stringify(value)).join('\n')}`
+};
+
+type API = {
+    GEMINI_API_KEY: string,
+    TAVILY_API_KEY: string,
+} | { Error: string };
+
+export const getapikeys = async (): Promise<API> => {
+    try {
+        const filepath = path.join(os.homedir(), 'my-cli/config.json');
+        const data = await readFile(filepath, { encoding: "utf-8" });
+        const keys: { GEMINI_API_KEY: string, TAVILY_API_KEY: string } = JSON.parse(data);
+
+        return {
+            GEMINI_API_KEY: keys.GEMINI_API_KEY,
+            TAVILY_API_KEY: keys.TAVILY_API_KEY
+        }
+    } catch (error) {
+        if (error instanceof Error) {
+            return {
+                Error: error.message.toString()
+            }
+        }
+        return {
+            Error: (error as string).toString()
+        }
+    }
 };
