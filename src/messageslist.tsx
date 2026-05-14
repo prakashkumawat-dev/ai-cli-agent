@@ -145,8 +145,8 @@ const MessagesList = memo(({ list, Size }: { list: MSG, Size: { width: number | 
                             }
                         case "logo": {
                             return (<Box key={value.id} width={"100%"} overflowX="hidden">
-                                <Gradient colors={["#ff6404ff", "#ff6404ff"]}>
-                                    <BigText align="left" text={value.message} font="huge" />
+                                <Gradient colors={["#ff6404ff", "#e69766"]}>
+                                    <BigText text={value.message} />
                                 </Gradient>
                             </Box>)
                         }
@@ -154,7 +154,7 @@ const MessagesList = memo(({ list, Size }: { list: MSG, Size: { width: number | 
                             const items = value.message.split(',').map((value) => value.trim());
                             return (<Box marginBottom={3} marginTop={3} gap={1} key={value.id} flexDirection="column">
                                 <Box flexDirection="column">
-                                    <Text>wellcome to hello cli agent.</Text>
+                                    <Text>wellcome to kelvin code cli agent.</Text>
                                     <Text>tips to getting started.</Text>
                                 </Box>
                                 <Box flexDirection="column">

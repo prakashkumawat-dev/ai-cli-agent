@@ -4,9 +4,8 @@ import { StateGraph, Command, interrupt, END, START, MemorySaver } from '@langch
 import type { LangGraphRunnableConfig } from '@langchain/langgraph'
 import { TextInput, PasswordInput, StatusMessage, Select, Spinner } from '@inkjs/ui';
 import z from 'zod';
-import os from 'node:os';
 import path from 'node:path';
-import { readFile, appendFile } from 'node:fs/promises';
+import { appendFile } from 'node:fs/promises';
 import { ChatGoogle } from '@langchain/google';
 import { SYSTEM_PROMPT1, LOAD_TOOL_DESCRIPTION, summarizerSystemPrompt } from './agent/system.js';
 import { write_file, read_file, edit_file, run_shell_command, glob, grep, write_todos } from './agent/tool.js';
@@ -82,7 +81,7 @@ const App = memo(() => {
     const [Tokens, setTokens] = useState<number>(0);
     const [ToolPermissions, SetToolPermissions] = useState<TOOLPER>({ index: 0, shouldshow: false, toolinfo: [] });
     const [Status, setStatus] = useState<STATUS>({ shouldshow: false, message: "Thinking..." });
-    const [Messages, setMessages] = useState<MSG>({ id: "erd", message: [{ id: "Lo8gheMuf", message: "kelvin", type: "logo" }, { id: "De8sn$", type: "description", message: "build websites,debug your code,test your app,press ctrl + x for exit" }] });
+    const [Messages, setMessages] = useState<MSG>({ id: "erd", message: [{ id: "Lo8gheMuf", message: "kelvin code", type: "logo" }, { id: "De8sn$", type: "description", message: "build websites,debug your code,test your app,press ctrl + c for exit" }] });
     const [ShowInputBox, setShowInputBox] = useState<boolean>(true);
 
 

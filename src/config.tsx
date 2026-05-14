@@ -104,8 +104,8 @@ const Config: FC<child> = ({ Setconfigrations }) => {
             {
                 () => (
                     <Box flexDirection="column" key={"wewe"}>
-                        <Gradient colors={["#ff6404ff", "#ff6404ff"]}>
-                            <BigText align="left" text="HELLO" font="huge" />
+                        <Gradient colors={["#ff6404ff", "#e69766"]}>
+                            <BigText text="kelvin code" />
                         </Gradient>
                         <Text wrap="wrap">Hi, Wellcome to the my-cli ai agent. just setup your envirnment to getting started. to seting following api keys</Text>
                     </Box>

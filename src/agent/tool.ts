@@ -1,4 +1,5 @@
-import { tool } from "@langchain/core/tools";
+// import { tool } from "@langchain/core/tools";
+import { tool, createAgent, AIMessage } from 'langchain';
 import z from 'zod';
 import process from 'node:process';
 import fs from 'node:fs';
@@ -17,7 +18,16 @@ import {
     ispwshexsist,
     GREP_DESCRIPTION,
     WRITE_TODO_DESCRIPTION,
-} from './system.js'
+    CRAWLER_TOOL_DESCRIPTION,
+    MAPING_TOOL_DESCRIPTION,
+    WEB_SEARCH_TOOL_DESCRIPTION,
+    WB_EXTRACTER_TOOL_DESCRIPTION,
+    RESEARCH_SUBAGENT_SYSTEM_PROMPT,
+    WEB_RESEARCH_TOOL_DESCRIPTION
+} from './system.js';
+import { tavily } from "@tavily/core";
+import { ChatGoogle } from '@langchain/google';
+import { getapikeys } from '../utils/utils.js';
 
 const patterns = [
     /are you sure/i,
@@ -110,6 +120,15 @@ const memory_size = async (file_path: string) => {
 };
 
 const MAX_MEMORY_SIZE = 5242880;
+
+// api keys
+const api_keys: {
+    GEMINI_API_KEY: null | string,
+    TAVILY_API_KEY: null | string
+} = {
+    GEMINI_API_KEY: null,
+    TAVILY_API_KEY: null
+};
 
 export const read_file = tool(
     async ({ file_path, offset, limit }) => {
@@ -621,4 +640,285 @@ export const grep = tool(
                 .describe("glob pattern to filter files (e.g., '*.ts')"),
         }),
     },
+);
+
+const web_search = tool(
+    async ({ query, topic }) => {
+        try {
+            if (!query) {
+                return `Error, you did not give the query! please give query to web search`
+            }
+
+            let tavily_api_key: string = "";
+
+            if (api_keys.TAVILY_API_KEY) {
+                tavily_api_key = api_keys.TAVILY_API_KEY
+            } else {
+                const keys: any = await getapikeys()
+
+                if (keys.Error) {
+                    return `Error: api key is missing please say to user to submit a api key`
+                } else {
+                    tavily_api_key = keys.TAVILY_API_KEY as string;
+                }
+            };
+
+            const tvly = tavily({ apiKey: tavily_api_key });
+            const response = await tvly.search(query.trim(), { topic, maxResults: 4 });
+            const filteredData = response.results.map(item => {
+                return JSON.stringify({
+                    title: item.title,
+                    content: item.content,
+                    url: item.url
+                })
+            });
+
+            if (filteredData.length === 0) {
+                return `warning: nothing found about topic`
+            }
+
+            return `These are the results found about topic\n\n${filteredData.join('\n\n')}`;
+
+        } catch (error) {
+            if (error instanceof Error) {
+                return `Error: ${error.message}`
+            };
+            return `Error: ${error}`
+        }
+    },
+    {
+        name: "web_search",
+        description: WEB_SEARCH_TOOL_DESCRIPTION,
+        schema: z.object({
+            query: z.string().describe("query for searching on the web"),
+            topic: z.enum(["general", "news"])
+        })
+    }
+);
+
+const web_extracter = tool(
+    async ({ urls }) => {
+        try {
+
+            if (!urls) {
+                return `Error: urls are not provided please provide valid urls for extraction`
+            };
+
+            let tavily_api_key: string = "";
+
+            if (api_keys.TAVILY_API_KEY) {
+                tavily_api_key = api_keys.TAVILY_API_KEY
+            } else {
+                const keys: any = await getapikeys()
+
+                if (keys.Error) {
+                    return `Error: api key is missing please say to user to submit a api key`
+                } else {
+                    tavily_api_key = keys.TAVILY_API_KEY as string;
+                }
+            };
+
+            const tvly = tavily({ apiKey: tavily_api_key });
+            const response = await tvly.extract(urls);
+            const filteredData = response.results.map(item => {
+                if (item.rawContent.length > 30000) {
+                    return JSON.stringify({
+                        title: item.title,
+                        rawContent: item.rawContent.slice(0, 30000),
+                        url: item.url
+                    })
+                } else {
+                    return JSON.stringify({
+                        title: item.title,
+                        rawContent: item.rawContent,
+                        url: item.url
+                    })
+                }
+            });
+
+            if (filteredData.length === 0) {
+                return `warning: nothing found during extraction.`
+            };
+
+            return `these are the extrected data\n\n${filteredData.join('\n')}`;
+        } catch (error) {
+            if (error instanceof Error) {
+                return error.message
+            }
+            return `${error}`;
+        }
+    },
+    {
+        name: "web_extracter",
+        description: WB_EXTRACTER_TOOL_DESCRIPTION,
+        schema: z.object({
+            urls: z.array(z.string()).max(5, "Maximum 5 URLs allowed").describe("webpage http url for extraction")
+        })
+    }
+);
+
+const crawler = tool(
+    async ({ url, instructions }) => {
+        try {
+            if (!url) {
+                return `Error: the url is not provided please provide a valid url`
+            };
+
+            if (!instructions) {
+                return `Error: the instructions is not provided`
+            };
+
+            let tavily_api_key: string = "";
+
+            if (api_keys.TAVILY_API_KEY) {
+                tavily_api_key = api_keys.TAVILY_API_KEY
+            } else {
+                const keys: any = await getapikeys()
+
+                if (keys.Error) {
+                    return `Error: api key is missing please say to user to submit a api key`
+                } else {
+                    tavily_api_key = keys.TAVILY_API_KEY as string;
+                }
+            };
+
+            const tvly = tavily({ apiKey: tavily_api_key });
+            const response = await tvly.crawl(url, { instructions });
+
+            const filteredData = response.results.map(item => {
+                if (item.rawContent.length > 30000) {
+                    return JSON.stringify({
+                        rawContent: item.rawContent.slice(0, 30000),
+                        url: item.url
+                    })
+                };
+                return JSON.stringify({
+                    rawContent: item.rawContent,
+                    url: item.url
+                })
+            });
+
+            if (filteredData.length === 0) {
+                return `warning: nothing is to crawl`;
+            }
+
+            return `here is the crawled data according sources\n\n${filteredData.slice(0, 5).join('\n\n')}`
+
+        } catch (error) {
+            if (error instanceof Error) {
+                return error.message;
+            }
+            return `${error}`;
+        }
+    },
+    {
+        name: "crawler",
+        description: CRAWLER_TOOL_DESCRIPTION,
+        schema: z.object({
+            url: z.string().describe("http url of webpage"),
+            instructions: z.string().describe("instructions for what to crawl")
+        })
+    }
+);
+
+const maper = tool(
+    async ({ url }) => {
+        try {
+            if (!url) {
+                return `Error: url is not provided please provide a url to map`
+            };
+
+            let tavily_api_key: string = "";
+
+            if (api_keys.TAVILY_API_KEY) {
+                tavily_api_key = api_keys.TAVILY_API_KEY
+            } else {
+                const keys: any = await getapikeys()
+
+                if (keys.Error) {
+                    return `Error: api key is missing please say to user to submit a api key`
+                } else {
+                    tavily_api_key = keys.TAVILY_API_KEY as string;
+                }
+            };
+
+            const tvly = tavily({ apiKey: tavily_api_key });
+            const response = await tvly.map(url);
+            if (response.results.length === 0) {
+                return `warning: nothing is to map!`;
+            }
+            return `Here is the list of related urls\n\n${response.results.slice(0, 20).join('\n')}`;
+        } catch (error) {
+            if (error instanceof Error) {
+                return error.message;
+            }
+            return `${error}`;
+        }
+    },
+    {
+        name: "maper",
+        description: MAPING_TOOL_DESCRIPTION,
+        schema: z.object({
+            url: z.string().describe("url for maping")
+        })
+    }
+);
+
+export const web_researcher = tool(
+    async ({ query }) => {
+        try {
+            if (!query) {
+                return `Error: query is not provided for research`;
+            };
+
+            let gemini_api_key: string = "";
+
+            if (api_keys.GEMINI_API_KEY && api_keys.TAVILY_API_KEY) {
+                gemini_api_key = api_keys.GEMINI_API_KEY
+            } else {
+                const keys: any = await getapikeys()
+
+                if (keys.Error) {
+                    return `Error: api key is missing please say to user to submit a api key`
+                } else {
+                    gemini_api_key = keys.GEMINI_API_KEY as string;
+                }
+
+            }
+
+            const model = new ChatGoogle({
+                model: "gemini-3-flash-preview",
+                apiKey: gemini_api_key
+            });
+
+            const researchAgent = createAgent({
+                model,
+                systemPrompt: RESEARCH_SUBAGENT_SYSTEM_PROMPT,
+                tools: [web_search, web_extracter, crawler, maper]
+            });
+
+            const responce = await researchAgent.invoke({
+                messages: [{ role: "human", content: query }]
+            });
+
+            for (const element of responce.messages) {
+                if (AIMessage.isInstance(element) && element.tool_calls?.length === 0) {
+                    return `${element.content}`;
+                }
+            }
+
+        } catch (error) {
+            if (error instanceof Error) {
+                return `Error: ${error.message}`
+            }
+            return `Error: ${error}`;
+        }
+    },
+    {
+        name: "web_researcher",
+        description: WEB_RESEARCH_TOOL_DESCRIPTION,
+        schema: z.object({
+            query: z.string().describe("1-2 line query for research")
+        })
+    }
 );
