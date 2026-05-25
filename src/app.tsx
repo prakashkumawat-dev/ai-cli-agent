@@ -8,12 +8,13 @@ import path from 'node:path';
 import { appendFile } from 'node:fs/promises';
 import { ChatGoogle } from '@langchain/google';
 import { SYSTEM_PROMPT1, LOAD_TOOL_DESCRIPTION, summarizerSystemPrompt } from './agent/system.js';
-import { write_file, read_file, edit_file, run_shell_command, glob, grep, write_todos } from './agent/tool.js';
+import { write_file, read_file, edit_file, run_shell_command, glob, grep, write_todos, web_researcher } from './agent/tool.js';
 import { ispowershell } from './agent/system.js';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
 import MessagesList from './messageslist.js';
 import { v4 as uuid } from 'uuid';
 import { countTokensApproximately, findSafeCutOff, convertToOpenAiMessageFormat, getapikeys } from './utils/utils.js';
+import { writeFile } from 'node:fs/promises';
 
 
 
@@ -78,7 +79,7 @@ const App = memo(() => {
     const [size, setSize] = useState<{ height: number | string, width: number | string }>({ height: "100%", width: "100%" });
     const [promiseApi, SetpromiseApi] = useState<STATE>({ shouldshow: false, index: 0, keynames: [] });
     const [InfoMessage, SetInfoMessage] = useState<InfoType>({ shouldshow: false, message: "info", type: "info" });
-    const [Tokens, setTokens] = useState<number>(0);
+    const [Tokens, setTokens] = useState<{ llmTokens: number, tavilyCredits: number }>({ llmTokens: 0, tavilyCredits: 0 });
     const [ToolPermissions, SetToolPermissions] = useState<TOOLPER>({ index: 0, shouldshow: false, toolinfo: [] });
     const [Status, setStatus] = useState<STATUS>({ shouldshow: false, message: "Thinking..." });
     const [Messages, setMessages] = useState<MSG>({ id: "erd", message: [{ id: "Lo8gheMuf", message: "kelvin code", type: "logo" }, { id: "De8sn$", type: "description", message: "build websites,debug your code,test your app,press ctrl + c for exit" }] });
@@ -185,10 +186,14 @@ const App = memo(() => {
 
 
     const set_api_keys = tool(
-        async ({ keyname, dirPath }: { keyname: string[], dirPath: string }) => {
+        async ({ keyname, dirPath }, config: LangGraphRunnableConfig) => {
             try {
                 if (keyname.length === 0 || !keyname) {
                     return JSON.stringify({ error: "keyname is not defined please give the keyname" });
+                }
+
+                if (config.writer) {
+                    config.writer({ status: `Asking api keys to user ...` });
                 }
 
                 if (!dirPath) {
@@ -244,16 +249,21 @@ const App = memo(() => {
         "glob": glob,
         "grep": grep,
         "write_todos": write_todos,
+        "web_researcher": web_researcher
     };
 
     // ------------------------------load_tool-----------------------------
     const load_tools = tool(
-        async ({ tools }) => {
+        async ({ tools }, config: LangGraphRunnableConfig) => {
             try {
 
                 if (tools.length === 0) {
                     return `Error: tool names are not provided please provide tool names that you need to use`
                 };
+
+                if (config.writer) {
+                    config.writer({ status: `Loading tools ${tools.join(' ,')} ...` });
+                }
 
                 let results = [];
 
@@ -384,6 +394,16 @@ const App = memo(() => {
                 SetInfoMessage({ message: `⛏️ i am from compact NODE, total msg = ${lenghtOfmessages}, total_tokens = ${total_tokens}`, shouldshow: true, type: "info" });
                 setStatus({ shouldshow: true, message: "compacting the context window..." });
                 const generatedSummary = await sumarizerllm.invoke([new SystemMessage(summarizerSystemPrompt), new HumanMessage(`here is the conversation to date\n\n${filteredMessages}`)])
+
+                if (config.writer && generatedSummary.usage_metadata) {
+                    config.writer({
+                        tokenUsed: (generatedSummary.usage_metadata as Usage_metadata).total_tokens,
+                    });
+                }
+
+                // debuging step
+
+                await writeFile(path.resolve("COMPACT.md"), generatedSummary.content as string);
 
                 const human_message = new HumanMessage(`this is the summary and memory of us previews conversation\n\n${generatedSummary.content}`);
 
@@ -553,10 +573,12 @@ const App = memo(() => {
             const toollist: ToolCall[] = lastmsg.tool_calls;
             const ToolOutput: any = [];
             for (const element of toollist) {
-                if (config.writer) {
-                    config.writer({ status: `executing the '${element.name}' tool...` });
-                }
-                const toolsresponce = await (executableTools as any)[element.name].invoke(element.args);
+
+                // if (config.writer) {
+                //     config.writer({ status: `executing the '${element.name}' tool...` });
+                // }
+
+                const toolsresponce = await (executableTools as any)[element.name].invoke(element.args, config);
                 ToolOutput.push(new ToolMessage({ name: element.name, tool_call_id: element.id, content: toolsresponce }));
 
 
@@ -616,7 +638,8 @@ const App = memo(() => {
     interface CUSTOM {
         toolCancled: Grant[],
         status: string,
-        tokenUsed: number
+        tokenUsed: number,
+        tavilyCredits: number
     }
 
     type chunk_type = ["updates", UPDATE] | ["custom", CUSTOM]
@@ -672,7 +695,7 @@ const App = memo(() => {
 
                     if (streamtype == "custom") {
                         if (value.tokenUsed && "tokenUsed" in value) {
-                            setTokens(prev => prev + value.tokenUsed);
+                            setTokens(prev => ({ llmTokens: prev.llmTokens + value.tokenUsed, tavilyCredits: prev.tavilyCredits }));
                         }
                         if (value.status && "status" in value) {
 
@@ -681,6 +704,10 @@ const App = memo(() => {
                         if (value.toolCancled && "toolCancled" in value) {
 
                             SetInfoMessage({ message: JSON.stringify({ cancled_tools: value.toolCancled }), shouldshow: true, type: "info" })
+                        }
+
+                        if (value.tavilyCredits && "tavilyCredits" in value) {
+                            setTokens(prev => ({ llmTokens: prev.llmTokens, tavilyCredits: prev.tavilyCredits + value.tavilyCredits }));
                         }
                     } else {
                         if (value.__interrupt__ && value.__interrupt__.length > 0) {
@@ -782,9 +809,12 @@ const App = memo(() => {
         }
 
         {/* <Count /> */}
-        <Box width={size.width} justifyContent="flex-end" paddingRight={1}>
+        <Box width={size.width} justifyContent="flex-end" gap={2} paddingRight={1}>
             <Text>
-                Token used: <Text color="cyan">{Tokens.toString()}</Text>
+                Tavily credits used: <Text color={"cyan"} >{Tokens.tavilyCredits.toString()}</Text>
+            </Text>
+            <Text>
+                LLM Token used: <Text color="cyan">{Tokens.llmTokens.toString()}</Text>
             </Text>
         </Box>
     </>);

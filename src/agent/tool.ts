@@ -1,5 +1,5 @@
-// import { tool } from "@langchain/core/tools";
-import { tool, createAgent, AIMessage } from 'langchain';
+import { tool } from "@langchain/core/tools";
+import { createAgent, AIMessage } from 'langchain';
 import z from 'zod';
 import process from 'node:process';
 import fs from 'node:fs';
@@ -28,6 +28,7 @@ import {
 import { tavily } from "@tavily/core";
 import { ChatGoogle } from '@langchain/google';
 import { getapikeys } from '../utils/utils.js';
+import type { LangGraphRunnableConfig } from '@langchain/langgraph';
 
 const patterns = [
     /are you sure/i,
@@ -131,7 +132,7 @@ const api_keys: {
 };
 
 export const read_file = tool(
-    async ({ file_path, offset, limit }) => {
+    async ({ file_path, offset, limit }, config: LangGraphRunnableConfig) => {
         try {
             if (!file_path) {
                 return `Error: File path is not provided please provid relativ file path to read file)`
@@ -148,10 +149,14 @@ export const read_file = tool(
             const absolutepath = path.resolve(normalizedPath);
 
             const { exsist, isError } = await isFileExsist(absolutepath);
+
             if (!exsist) {
                 return JSON.stringify({ cause: "error", message: `${isError}` })
             };
 
+            if (config.writer) {
+                config.writer({ status: `Reading file ${file_path} ...` });
+            }
 
             const input = fs.createReadStream(absolutepath);
 
@@ -212,7 +217,7 @@ export const read_file = tool(
 
 // ✅
 export const write_file = tool(
-    async ({ filepath, content, mode }) => {
+    async ({ filepath, content, mode }, config: LangGraphRunnableConfig) => {
         try {
             if (!filepath) {
                 return JSON.stringify({ cause: "error", message: "File path is not provided please provid relativ file path" })
@@ -231,6 +236,10 @@ export const write_file = tool(
             const normalizedPath = path.normalize(cleanPath);
 
             const absolutepath = path.resolve(normalizedPath);
+
+            if (config.writer) {
+                config.writer({ status: `Writing file in ${filepath} ...` });
+            }
 
             if (mode == "write") {
                 await fs.promises.writeFile(absolutepath, content)
@@ -262,7 +271,7 @@ If the mode is ""append**, new content is added to the end of the file without o
 
 // ✅
 export const edit_file = tool(
-    async ({ file_path, old_string, new_string, replace_all }) => {
+    async ({ file_path, old_string, new_string, replace_all }, config: LangGraphRunnableConfig) => {
 
         try {
             let content = "";
@@ -285,6 +294,10 @@ export const edit_file = tool(
             if (occurrences > 1 && !replace_all) {
                 return `Error: String '${old_string}' has multiple occurrences (appears ${occurrences} times) in file. Use replace_all=True to replace all instances, or provide a more specific string with surrounding context.`;
             };
+
+            if (config.writer) {
+                config.writer({ status: `Editing the file ${file_path} ...` });
+            }
 
             if (content === "" && old_string === "") {
                 await fs.promises.writeFile(absolutepath, new_string);
@@ -324,7 +337,12 @@ export const edit_file = tool(
 
 // ✅
 export const run_shell_command = tool(
-    async ({ command, dirpath, timeout, iskeepalive }) => {
+    async ({ command, dirpath, timeout, iskeepalive }, config: LangGraphRunnableConfig) => {
+
+        if (config.writer) {
+            config.writer({ status: `Executing the Command ${command} ...` });
+        }
+
         return new Promise((resolve) => {
             try {
                 let isposix = process.platform === "win32";
@@ -469,7 +487,7 @@ export const run_shell_command = tool(
 );
 
 export const glob = tool(
-    async ({ pattern, directory_path }) => {
+    async ({ pattern, directory_path }, config: LangGraphRunnableConfig) => {
         try {
 
             if (pattern.startsWith("/")) {
@@ -487,6 +505,10 @@ export const glob = tool(
                 };
                 base_path = given_path;
             };
+
+            if (config.writer) {
+                config.writer({ status: `Finding the file paths according glob pattern ${pattern} ...` });
+            }
 
             const matches = await fg(pattern, {
                 onlyFiles: true,
@@ -529,7 +551,12 @@ const TodoSchema = z.object({
 });
 
 export const write_todos = tool(
-    async ({ todos }) => {
+    async ({ todos }, config: LangGraphRunnableConfig) => {
+
+        if (config.writer) {
+            config.writer({ status: `Writing Todos ...` });
+        }
+
         `Updated todo list to ${JSON.stringify(todos)}`
     },
     {
@@ -542,7 +569,7 @@ export const write_todos = tool(
 );
 
 export const grep = tool(
-    async ({ pattern, directory_path, glob }) => {
+    async ({ pattern, directory_path, glob }, config: LangGraphRunnableConfig) => {
         try {
             if (!pattern) {
                 return `Error: pattern is not provided`;
@@ -551,6 +578,10 @@ export const grep = tool(
             if (!glob) {
                 return `Error: glob is not provided`;
             };
+
+            if (config.writer) {
+                config.writer({ status: `Greping the content according glob ${glob} ...` });
+            }
 
             let DIR = path.resolve(process.cwd());
 
@@ -643,10 +674,14 @@ export const grep = tool(
 );
 
 const web_search = tool(
-    async ({ query, topic }) => {
+    async ({ query, topic }, config: LangGraphRunnableConfig) => {
         try {
             if (!query) {
                 return `Error, you did not give the query! please give query to web search`
+            }
+
+            if (config.writer) {
+                config.writer({ status: `Searching on the web` });
             }
 
             let tavily_api_key: string = "";
@@ -664,7 +699,12 @@ const web_search = tool(
             };
 
             const tvly = tavily({ apiKey: tavily_api_key });
-            const response = await tvly.search(query.trim(), { topic, maxResults: 4 });
+            const response = await tvly.search(query.trim(), { topic, maxResults: 4, includeUsage: true });
+
+            if (config.writer && response.usage && response.usage.credits) {
+                config.writer({ Credits: response.usage.credits });
+            }
+
             const filteredData = response.results.map(item => {
                 return JSON.stringify({
                     title: item.title,
@@ -697,12 +737,16 @@ const web_search = tool(
 );
 
 const web_extracter = tool(
-    async ({ urls }) => {
+    async ({ urls }, config: LangGraphRunnableConfig) => {
         try {
 
             if (!urls) {
                 return `Error: urls are not provided please provide valid urls for extraction`
             };
+
+            if (config.writer) {
+                config.writer({ status: `Extracting the web pages: ${urls.join(' ')}` });
+            }
 
             let tavily_api_key: string = "";
 
@@ -719,7 +763,12 @@ const web_extracter = tool(
             };
 
             const tvly = tavily({ apiKey: tavily_api_key });
-            const response = await tvly.extract(urls);
+            const response = await tvly.extract(urls, { includeUsage: true });
+
+            if (config.writer && response.usage && response.usage.credits) {
+                config.writer({ Credits: response.usage.credits });
+            }
+
             const filteredData = response.results.map(item => {
                 if (item.rawContent.length > 30000) {
                     return JSON.stringify({
@@ -758,7 +807,7 @@ const web_extracter = tool(
 );
 
 const crawler = tool(
-    async ({ url, instructions }) => {
+    async ({ url, instructions }, config: LangGraphRunnableConfig) => {
         try {
             if (!url) {
                 return `Error: the url is not provided please provide a valid url`
@@ -767,6 +816,10 @@ const crawler = tool(
             if (!instructions) {
                 return `Error: the instructions is not provided`
             };
+
+            if (config.writer) {
+                config.writer({ status: `Crawling the web page: ${url}` });
+            }
 
             let tavily_api_key: string = "";
 
@@ -783,7 +836,11 @@ const crawler = tool(
             };
 
             const tvly = tavily({ apiKey: tavily_api_key });
-            const response = await tvly.crawl(url, { instructions });
+            const response = await tvly.crawl(url, { instructions, includeUsage: true });
+
+            if (config.writer && response.usage && response.usage.credits) {
+                config.writer({ Credits: response.usage.credits });
+            }
 
             const filteredData = response.results.map(item => {
                 if (item.rawContent.length > 30000) {
@@ -822,11 +879,16 @@ const crawler = tool(
 );
 
 const maper = tool(
-    async ({ url }) => {
+    async ({ url }, config: LangGraphRunnableConfig) => {
         try {
+
             if (!url) {
                 return `Error: url is not provided please provide a url to map`
             };
+
+            if (config.writer) {
+                config.writer({ status: `Maping the web page's urls` });
+            }
 
             let tavily_api_key: string = "";
 
@@ -843,7 +905,12 @@ const maper = tool(
             };
 
             const tvly = tavily({ apiKey: tavily_api_key });
-            const response = await tvly.map(url);
+            const response = await tvly.map(url, { includeUsage: true });
+
+            if (config.writer && response.usage && response.usage.credits) {
+                config.writer({ Credits: response.usage.credits });
+            }
+
             if (response.results.length === 0) {
                 return `warning: nothing is to map!`;
             }
@@ -865,7 +932,7 @@ const maper = tool(
 );
 
 export const web_researcher = tool(
-    async ({ query }) => {
+    async ({ query }, config: LangGraphRunnableConfig) => {
         try {
             if (!query) {
                 return `Error: query is not provided for research`;
@@ -897,15 +964,54 @@ export const web_researcher = tool(
                 tools: [web_search, web_extracter, crawler, maper]
             });
 
-            const responce = await researchAgent.invoke({
-                messages: [{ role: "human", content: query }]
-            });
+            let total_tavily_credits = 0;
 
-            for (const element of responce.messages) {
-                if (AIMessage.isInstance(element) && element.tool_calls?.length === 0) {
-                    return `${element.content}`;
+            let total_llm_tokens = 0;
+
+            let last_msg = "";
+
+            for await (const chunk of await researchAgent.stream(
+                { messages: [{ role: "user", content: query }] },
+                { streamMode: ["custom", "updates"] }
+            )) {
+
+                if (chunk[0] === "updates") {
+
+                    if ("model_request" in chunk[1]) {
+
+                        const messages = (chunk[1] as any).model_request.messages
+
+                        last_msg = messages[messages.length - 1];
+
+                        if (AIMessage.isInstance(last_msg)) {
+                            total_llm_tokens += (last_msg as any).usage_metadata.total_tokens
+                        };
+                    }
+
+                } else if (chunk[0] === "custom") {
+                    if ("Credits" in (chunk[1] as any)) {
+                        total_tavily_credits += (chunk[1] as any).Credits
+                    }
+                    if ("status" in (chunk[1] as any)) {
+                        if (config.writer) {
+                            config.writer({ status: `${(chunk[1] as any).status} ...` });
+                        }
+                    }
                 }
+            };
+
+            if (config.writer) {
+                config.writer({
+                    tokenUsed: total_llm_tokens,
+                    tavilyCredits: total_tavily_credits
+                });
             }
+
+            if (typeof (last_msg as any).content === "string") {
+                return `${(last_msg as any).content}`;
+            }
+
+            return JSON.stringify((last_msg as any).content)
 
         } catch (error) {
             if (error instanceof Error) {
@@ -918,7 +1024,7 @@ export const web_researcher = tool(
         name: "web_researcher",
         description: WEB_RESEARCH_TOOL_DESCRIPTION,
         schema: z.object({
-            query: z.string().describe("1-2 line query for research")
+            query: z.string().describe("query for research")
         })
     }
 );

@@ -60,8 +60,8 @@ const MessagesList = memo(({ list, Size }: { list: MSG, Size: { width: number | 
                                 switch (value.toolname) {
                                     case "run_shell_command": {
                                         const parseddata: Toolresponce = JSON.parse(value.message);
-                                        return (<Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"round"} borderColor={"#fd7303"}>
-                                            <Text wrap="wrap">{`⛏️  tool output `}<Text wrap="wrap" color={"#ababab"}>{`(${value.toolname})`}</Text></Text>
+                                        return (<Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"classic"} borderColor={"#fd7303"}>
+                                            <Text color={"#ffff"} wrap="wrap">{`Tool output`}<Text wrap="wrap" color={"#fa5c00"}>{`(${value.toolname})`}</Text></Text>
                                             <Text color={"#ababab"}><Text color={"#ffffff"}>with args: </Text>{value.toolargs}</Text>
                                             <Text color={"#ababab"} wrap="wrap">{`cause: ${parseddata.cause}\n\nstdout: ${parseddata.stdout}\n\nstderr: ${parseddata.stderr}\n\ntoolerror: ${parseddata.toolerror}`}</Text>
                                         </Box>)
@@ -78,7 +78,7 @@ const MessagesList = memo(({ list, Size }: { list: MSG, Size: { width: number | 
                                                 const finallines = totallines.slice(0, 50).map(line => `+ ${line}`).join('\n');
                                                 lines = `${finallines}....more`;
                                             } else {
-                                                lines = totallines.map(line => `+ ${line}`).join('\n');
+                                                lines = totallines.join('\n');
                                             }
                                         };
 
@@ -88,10 +88,10 @@ const MessagesList = memo(({ list, Size }: { list: MSG, Size: { width: number | 
                                             args = value.toolargs;
                                         };
 
-                                        return (<Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"round"} borderColor={"#fd7303"}>
-                                            <Text wrap="wrap">{`⛏️  tool output `}<Text wrap="wrap" color={"#ababab"}>{`(${value.toolname})`}</Text></Text>
+                                        return (<Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"classic"} borderColor={"#fd7303"}>
+                                            <Text color={"#ffff"} wrap="wrap">{`Tool output`}<Text wrap="wrap" color={"#fa5c00"}>{`(${value.toolname})`}</Text></Text>
                                             <Text color={"#ababab"}><Text color={"#ffffff"}>with args: </Text>{args}</Text>
-                                            {parseddata.cause == "error" ? <Text wrap="wrap">{parseddata.message}</Text> : <Text wrap="wrap" backgroundColor={"green"} >{lines}</Text>}
+                                            {parseddata.cause == "error" ? <Text wrap="wrap">{parseddata.message}</Text> : <Text wrap="wrap">{lines}</Text>}
                                         </Box>)
                                     }
                                         break;
@@ -108,8 +108,8 @@ const MessagesList = memo(({ list, Size }: { list: MSG, Size: { width: number | 
                                         //     }
                                         // }
                                         return (
-                                            <Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"round"} borderColor={"#fd7303"}>
-                                                <Text wrap="wrap">{`⛏️  tool output `}<Text wrap="wrap" color={"#ababab"}>{`(${value.toolname})`}</Text></Text>
+                                            <Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"classic"} borderColor={"#fd7303"}>
+                                                <Text color={"#ffff"} wrap="wrap">{`Tool output`}<Text wrap="wrap" color={"#fa5c00"}>{`(${value.toolname})`}</Text></Text>
                                                 <Text color={"#ababab"}><Text color={"#ffffff"}>with args: </Text>{value.toolargs}</Text>
                                                 {/* {parseddata.cause == "error" ? <Text wrap="wrap">{value.message}</Text> : <Text wrap="wrap">{lines}</Text>} */}
                                                 <Text wrap="wrap">{value.message}</Text>
@@ -125,22 +125,38 @@ const MessagesList = memo(({ list, Size }: { list: MSG, Size: { width: number | 
                                             args = value.toolargs;
                                         }
                                         return (
-                                            <Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"round"} borderColor={"#fd7303"}>
-                                                <Text wrap="wrap">{`⛏️  tool output `}<Text wrap="wrap" color={"#ababab"}>{`(${value.toolname})`}</Text></Text>
+                                            <Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"classic"} borderColor={"#fd7303"}>
+                                                <Text color={"#ffff"} wrap="wrap">{`Tool output`}<Text wrap="wrap" color={"#fa5c00"}>{`(${value.toolname})`}</Text></Text>
                                                 <Text color={"#ababab"}><Text color={"#ffffff"}>with args:</Text>{args}</Text>
                                                 <Text wrap="wrap">{value.message}</Text>
                                             </Box>
                                         )
                                     }
+
+                                    case "load_tools": {
+                                        let toolData = "";
+
+                                        if (value.message.length > 500) {
+                                            toolData = value.message.slice(0, 500)
+                                        } else {
+                                            toolData = value.message
+                                        }
+
+                                        return (<Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"classic"} borderColor={"#fd7303"}>
+                                            <Text color={"#ffff"} wrap="wrap">{`Tool output`}<Text wrap="wrap" color={"#fa5c00"}>{`(${value.toolname})`}</Text></Text>
+                                            <Text color={"#ababab"}><Text color={"#ffffff"}>with args:</Text>{value.toolargs}</Text>
+                                            <Text wrap="wrap">{toolData}</Text>
+                                        </Box>)
+                                    }
+
                                     default:
                                         return (
-                                            <Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"round"} borderColor={"#fd7303"}>
-                                                <Text wrap="wrap">{`⛏️  tool output `}<Text wrap="wrap" color={"#ababab"}>{`(${value.toolname})`}</Text></Text>
+                                            <Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"classic"} borderColor={"#fd7303"}>
+                                                <Text color={"#ffff"} wrap="wrap">{`Tool output`}<Text wrap="wrap" color={"#fa5c00"}>{`(${value.toolname})`}</Text></Text>
                                                 <Text color={"#ababab"}><Text color={"#ffffff"}>with args:</Text>{value.toolargs}</Text>
                                                 <Text wrap="wrap">{value.message}</Text>
                                             </Box>
                                         )
-                                        break;
                                 }
                             }
                         case "logo": {
