@@ -5,7 +5,7 @@ import BigText from "ink-big-text";
 
 type MessageTypes = {
     id: string,
-    type: "human" | "llm" | "tool" | "logo" | "description",
+    type: "human" | "llm" | "tool" | "logo" | "description" | "info",
     message: string,
     toolname?: string,
     toolargs?: string,
@@ -180,6 +180,12 @@ const MessagesList = memo(({ list, Size }: { list: MSG, Size: { width: number | 
                                         ))
                                     }
                                 </Box>
+                            </Box>)
+                        }
+                        case "info": {
+                            return (<Box gap={1} paddingLeft={1} paddingRight={1} key={value.id} borderColor={"cyan"} borderStyle={"double"} flexDirection="column">
+                                <Text>Info message</Text>
+                                <Text wrap="wrap" color={"white"} >{`${value.message}`}</Text>
                             </Box>)
                         }
                         default:

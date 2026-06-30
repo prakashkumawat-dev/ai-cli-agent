@@ -1,6 +1,6 @@
-import React, { useState, memo, useEffect, useRef } from 'react';
+import React, { useState, memo, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Box, Text, useStdout, useApp, useInput } from 'ink';
-import { StateGraph, Command, interrupt, END, START, MemorySaver } from '@langchain/langgraph';
+import { StateGraph, Command, interrupt, END, START, MemorySaver, StateSchema } from '@langchain/langgraph';
 import type { LangGraphRunnableConfig } from '@langchain/langgraph'
 import { TextInput, PasswordInput, StatusMessage, Select, Spinner } from '@inkjs/ui';
 import z from 'zod';
@@ -8,15 +8,15 @@ import path from 'node:path';
 import { appendFile } from 'node:fs/promises';
 import { ChatGoogle } from '@langchain/google';
 import { SYSTEM_PROMPT1, LOAD_TOOL_DESCRIPTION, summarizerSystemPrompt } from './agent/system.js';
-import { write_file, read_file, edit_file, run_shell_command, glob, grep, write_todos, web_researcher } from './agent/tool.js';
-import { ispowershell } from './agent/system.js';
+import { write_file, read_file, edit_file, run_shell_command, glob, grep, write_todos, web_researcher, file_system_agent, shell_agent } from './agent/tool.js';
+import { ispowershell, FILE_SYSTEM_AGENT_SYSTEM_PROMPT, SHELL_AGENT_SYSTEM_PROMPT } from './agent/system.js';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
 import MessagesList from './messageslist.js';
 import { v4 as uuid } from 'uuid';
-import { countTokensApproximately, findSafeCutOff, convertToOpenAiMessageFormat, getapikeys } from './utils/utils.js';
+import { countTokensApproximately, findSafeCutOff, convertToOpenAiMessageFormat, getapikeys, createSubAgent } from './utils/utils.js';
 import { writeFile } from 'node:fs/promises';
 
-
+// const {} = getapikeys();
 
 interface KeyRef {
     current: {
@@ -61,7 +61,7 @@ type Store = "allow" | "cancle" | "session";
 
 type MessageTypes = {
     id: string,
-    type: "human" | "llm" | "tool" | "logo" | "description",
+    type: "human" | "llm" | "tool" | "logo" | "description" | "info",
     message: string,
     toolname?: string,
     toolargs?: string,
@@ -92,6 +92,27 @@ const App = memo(() => {
 
     const { exit } = useApp();
     const { stdout } = useStdout();
+
+    // sub agents
+    const file_system_agent_node = useMemo(() => (createSubAgent({
+        allowParallel: false,
+        apiKey: "AQ.Ab8RN6J6n8bpbePoizKtRlBNgn6x8aQKVH3NbrUrvYtPM3jMlA",
+        modelName: "gemini-3.5-flash",
+        systemPrompt: FILE_SYSTEM_AGENT_SYSTEM_PROMPT,
+        tools: [write_file, read_file, edit_file, glob, grep],
+        setMessages,
+        checkPointer: true
+    })), [])
+
+    const shell_agent_node = useMemo(() => (createSubAgent({
+        allowParallel: false,
+        apiKey: "AQ.Ab8RN6J6n8bpbePoizKtRlBNgn6x8aQKVH3NbrUrvYtPM3jMlA",
+        modelName: "gemini-3.5-flash",
+        systemPrompt: SHELL_AGENT_SYSTEM_PROMPT,
+        tools: [run_shell_command],
+        setMessages,
+        checkPointer: true
+    })), [])
 
     // --------------handling application exit----------------
     useInput((input, key) => {
@@ -132,60 +153,76 @@ const App = memo(() => {
 
 
     // --------------------handling apisubmit function--------------------
-    const apisubmit = (value: string) => {
-        if (promiseApi.index < promiseApi.keynames?.length - 1) {
-            apiRef.current.push(value);
 
-            SetpromiseApi(prev => ({ ...prev, index: prev.index + 1 }));
-        }
-        else {
-            if (promiseApi.index == promiseApi.keynames?.length - 1) {
+    const apisubmit = useCallback(
+        (value: string) => {
+            if (promiseApi.index < promiseApi.keynames?.length - 1) {
                 apiRef.current.push(value);
-                promiseApi.resolve(apiRef.current);
 
-                SetpromiseApi({ shouldshow: false, keynames: [], index: 0, resolve: null });
-                apiRef.current = [];
+                SetpromiseApi(prev => ({ ...prev, index: prev.index + 1 }));
             }
-        }
-    }
+            else {
+                if (promiseApi.index == promiseApi.keynames?.length - 1) {
+                    apiRef.current.push(value);
+                    promiseApi.resolve(apiRef.current);
+
+                    SetpromiseApi({ shouldshow: false, keynames: [], index: 0, resolve: null });
+                    apiRef.current = [];
+                }
+            }
+        },
+        [promiseApi],
+    );
+
 
     // ---------------- handelUserPermission ---------------------
-    const handelUserPermission = (value: Store) => {
-        if (ToolPermissions.index < ToolPermissions.toolinfo.length - 1) {
-            const obj: Grant = { permission: value, toolName: (ToolPermissions.toolinfo[ToolPermissions.index] as tooltype).name };
-            storeRef.current.push(obj);
-
-            SetToolPermissions(prev => ({ ...prev, index: prev.index + 1 }));
-        } else {
-            if (ToolPermissions.index == ToolPermissions.toolinfo.length - 1) {
+    const handelUserPermission = useCallback(
+        (value: Store) => {
+            if (ToolPermissions.index < ToolPermissions.toolinfo.length - 1) {
                 const obj: Grant = { permission: value, toolName: (ToolPermissions.toolinfo[ToolPermissions.index] as tooltype).name };
                 storeRef.current.push(obj);
-                ToolPermissions.resolve(storeRef.current);
 
-                SetToolPermissions({ index: 0, shouldshow: false, toolinfo: [], resolve: null });
-                storeRef.current = [];
+                SetToolPermissions(prev => ({ ...prev, index: prev.index + 1 }));
+            } else {
+                if (ToolPermissions.index == ToolPermissions.toolinfo.length - 1) {
+                    const obj: Grant = { permission: value, toolName: (ToolPermissions.toolinfo[ToolPermissions.index] as tooltype).name };
+                    storeRef.current.push(obj);
+                    ToolPermissions.resolve(storeRef.current);
+
+                    SetToolPermissions({ index: 0, shouldshow: false, toolinfo: [], resolve: null });
+                    storeRef.current = [];
+                }
             }
-        }
-    };
+        },
+        [ToolPermissions],
+    );
 
     // ---------------- tool creation ---------------------
 
-    const showinput = (query: string[]): Promise<string[]> => {
-        return new Promise((resolve, reject) => {
+    const showinput = useCallback(
+        (query: string[]): Promise<string[]> => {
+            return new Promise((resolve, reject) => {
 
-            SetpromiseApi(prev => ({ ...prev, shouldshow: true, keynames: query, resolve }))
-        });
-    };
-
-    const getPermissions = (tools: tooltype[]) => {
-        return new Promise((resolve, reject) => {
-
-            SetToolPermissions(prev => ({ ...prev, shouldshow: true, resolve, toolinfo: tools }))
-        })
-    };
+                SetpromiseApi(prev => ({ ...prev, shouldshow: true, keynames: query, resolve }))
+            });
+        },
+        [],
+    );
 
 
-    const set_api_keys = tool(
+    const getPermissions = useCallback(
+        (tools: tooltype[]) => {
+            return new Promise((resolve, reject) => {
+
+                SetToolPermissions(prev => ({ ...prev, shouldshow: true, resolve, toolinfo: tools }))
+            })
+        },
+        [],
+    )
+
+
+
+    const set_api_keys = useMemo(() => (tool(
         async ({ keyname, dirPath }, config: LangGraphRunnableConfig) => {
             try {
                 if (keyname.length === 0 || !keyname) {
@@ -237,29 +274,30 @@ const App = memo(() => {
                 dirPath: z.string().optional().describe("relative path of directory in which have to set api key in .env file. this is optional, if not provide it set api key in .env file in current working directory")
             })
         }
-    );
+    )), []);
     // ---------------tool binding with object---------------
 
-    const invoketools = {
-        "write_file": write_file,
-        "edit_file": edit_file,
+    const invoketools = useMemo(() => ({
         "set_api_keys": set_api_keys,
-        "run_shell_command": run_shell_command,
-        "read_file": read_file,
-        "glob": glob,
-        "grep": grep,
         "write_todos": write_todos,
-        "web_researcher": web_researcher
-    };
+        "web_researcher": web_researcher,
+        "shell_agent": shell_agent,
+        "file_system_agent": file_system_agent
+    }), [])
+
+    const subAgentsList = useMemo(() => ({
+        "file_system_agent": "file_system_agent",
+        "shell_agent": "shell_agent"
+    }), [])
 
     // ------------------------------load_tool-----------------------------
-    const load_tools = tool(
+    const load_tools = useMemo(() => (tool(
         async ({ tools }, config: LangGraphRunnableConfig) => {
             try {
 
                 if (tools.length === 0) {
                     return `Error: tool names are not provided please provide tool names that you need to use`
-                };
+                }
 
                 if (config.writer) {
                     config.writer({ status: `Loading tools ${tools.join(' ,')} ...` });
@@ -308,23 +346,47 @@ const App = memo(() => {
                 tools: z.array(z.string()).describe("tool names that you need to use")
             })
         }
-    );
+    )), [])
 
     // Combine invoketools and load_tools into a single registry for execution
-    const executableTools = {
+    const executableTools = useMemo(() => ({
         ...invoketools,
         "load_tools": load_tools
-    };
+    }), [])
 
     // ---------------------- main Graph state-----------------------
+    const ToolInfoSchema = useMemo(() => (z.object({
+        id: z.string(),
+        name: z.string(),
+        args: z.any(),
+    })), [])
 
-    const State = z.object({
-        messageList: z.array(z.any()),
-        errorLogs: z.string().optional(),
-        finalResponce: z.string().optional(),
-        allowedToolsForSession: z.array(z.any()).optional(),
-        requiredToolsForPermision: z.array(z.any()).optional(),
-    });
+    const ToolRequestSchema = useMemo(() => (z.object({
+        type: z.enum(["agent", "normal"]),
+        toolInfo: z.array(ToolInfoSchema),
+    })), [])
+
+
+    const State = useMemo(() => (new StateSchema({
+        parentMessages: z.array(z.any()),
+        errorMessage: z.string(),
+        toolRequests: z.array(ToolRequestSchema),
+        toolIndex: z.number(),
+        parentAllowedToolsForSession: z.array(z.any()),
+        parentRequiredToolsForPermision: z.array(z.any()),
+        finalResponce: z.string()
+    })), [])
+
+    const stateType = useMemo(() => (z.object({
+        parentMessages: z.array(z.any()),
+        errorMessage: z.string(),
+        toolRequests: z.array(ToolRequestSchema),
+        toolIndex: z.number(),
+        parentAllowedToolsForSession: z.array(z.any()),
+        parentRequiredToolsForPermision: z.array(z.any()),
+        finalResponce: z.string()
+    })), []);
+
 
     interface Usage_metadata {
         input_tokens: number,
@@ -332,133 +394,202 @@ const App = memo(() => {
         total_tokens: number
     };
 
-    const requiredTools = {
+    const requiredTools = useMemo(() => ({
         "write_file": "write_file",
         "edit_file": "edit_file",
         "run_shell_command": "run_shell_command",
         "read_file": "read_file"
-    };
+    }), []);
 
     // -----------------------------compact context window-----------------------------
-    const compact = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
-        try {
-            const keys: {
-                GEMINI_API_KEY: string | null,
-                TAVILY_API_KEY: string | null
-            } = {
-                GEMINI_API_KEY: null,
-                TAVILY_API_KEY: null
-            };
+    const parentCompact = useCallback(
+        async (state: z.infer<typeof stateType>, config: LangGraphRunnableConfig) => {
+            // console.log(`🐼 from parentCompact`)
+            try {
+                const keys: {
+                    GEMINI_API_KEY: string | null,
+                    TAVILY_API_KEY: string | null
+                } = {
+                    GEMINI_API_KEY: null,
+                    TAVILY_API_KEY: null
+                };
 
-
-            if (!keyRef.current.GEMINI_API_KEY && !keyRef.current.TAVILY_API_KEY) {
-                const responce: any = await getapikeys();
-                if (responce.Error) {
-                    return new Command({ goto: END, update: { errorLogs: responce.Error } })
+                if (!keyRef.current.GEMINI_API_KEY && !keyRef.current.TAVILY_API_KEY) {
+                    const responce: any = await getapikeys();
+                    if (responce.Error) {
+                        return new Command({ goto: END, update: { errorMessage: responce.Error } })
+                    } else {
+                        keys.GEMINI_API_KEY = responce.GEMINI_API_KEY;
+                        keys.TAVILY_API_KEY = responce.TAVILY_API_KEY;
+                        keyRef.current.GEMINI_API_KEY = responce.GEMINI_API_KEY;
+                        keyRef.current.TAVILY_API_KEY = responce.TAVILY_API_KEY
+                    }
                 } else {
-                    keys.GEMINI_API_KEY = responce.GEMINI_API_KEY;
-                    keys.TAVILY_API_KEY = responce.TAVILY_API_KEY;
-                    keyRef.current.GEMINI_API_KEY = responce.GEMINI_API_KEY;
-                    keyRef.current.TAVILY_API_KEY = responce.TAVILY_API_KEY
+                    keys.GEMINI_API_KEY = keyRef.current.GEMINI_API_KEY;
+                    keys.TAVILY_API_KEY = keyRef.current.TAVILY_API_KEY;
                 }
-            } else {
-                keys.GEMINI_API_KEY = keyRef.current.GEMINI_API_KEY;
-                keys.TAVILY_API_KEY = keyRef.current.TAVILY_API_KEY;
-            }
 
-            if (state.messageList.length === 0) {
-                return new Command({ goto: "mockllm" });
-            };
+                if (state.parentMessages.length === 0) {
+                    return new Command({ goto: "parentMockllm" });
+                };
 
-            const total_tokens = countTokensApproximately(state.messageList, [load_tools]);
-            const lenghtOfmessages = state.messageList.length;
-            const MESSAGES_TO_KEEP = 10;
+                const total_tokens = countTokensApproximately(state.parentMessages, [load_tools]);
+                const lenghtOfmessages = state.parentMessages.length;
+                const MESSAGES_TO_KEEP = 10;
 
-            if (total_tokens >= 10000 && lenghtOfmessages >= 15) {
+                if (total_tokens >= 15000 && lenghtOfmessages >= 15) {
 
-                const SAFE_CUT_OFF = findSafeCutOff(state.messageList, MESSAGES_TO_KEEP);
+                    const SAFE_CUT_OFF = findSafeCutOff(state.parentMessages, MESSAGES_TO_KEEP);
 
-                const preservedSystemPrompt = state.messageList[0];
+                    const preservedSystemPrompt = state.parentMessages[0];
 
-                const preservedMessages = state.messageList.slice(SAFE_CUT_OFF + 1);
+                    const preservedMessages = state.parentMessages.slice(SAFE_CUT_OFF + 1);
 
-                // messages to summarise
-                const messagesTosummarise = state.messageList.slice(1, SAFE_CUT_OFF + 1);
-                const filteredMessages = convertToOpenAiMessageFormat(messagesTosummarise);
+                    // messages to summarise
+                    const messagesTosummarise = state.parentMessages.slice(1, SAFE_CUT_OFF + 1);
+                    const filteredMessages = convertToOpenAiMessageFormat(messagesTosummarise);
 
-                const sumarizerllm = new ChatGoogle({
-                    apiKey: keys.GEMINI_API_KEY as string,
-                    model: "gemini-3-flash-preview",
-                });
-
-                SetInfoMessage({ message: `⛏️ i am from compact NODE, total msg = ${lenghtOfmessages}, total_tokens = ${total_tokens}`, shouldshow: true, type: "info" });
-                setStatus({ shouldshow: true, message: "compacting the context window..." });
-                const generatedSummary = await sumarizerllm.invoke([new SystemMessage(summarizerSystemPrompt), new HumanMessage(`here is the conversation to date\n\n${filteredMessages}`)])
-
-                if (config.writer && generatedSummary.usage_metadata) {
-                    config.writer({
-                        tokenUsed: (generatedSummary.usage_metadata as Usage_metadata).total_tokens,
+                    const sumarizerllm = new ChatGoogle({
+                        apiKey: keys.GEMINI_API_KEY as string,
+                        model: "gemini-3.5-flash",
                     });
+
+                    SetInfoMessage({ message: `⛏️ i am from compact NODE, total msg = ${lenghtOfmessages}, total_tokens = ${total_tokens}`, shouldshow: true, type: "info" });
+                    setStatus({ shouldshow: true, message: "compacting the context window..." });
+                    const generatedSummary = await sumarizerllm.invoke([new SystemMessage(summarizerSystemPrompt), new HumanMessage(`here is the conversation to date\n\n${filteredMessages}`)])
+
+                    if (config.writer && generatedSummary.usage_metadata) {
+                        config.writer({
+                            tokenUsed: (generatedSummary.usage_metadata as Usage_metadata).total_tokens,
+                        });
+                    }
+
+                    // debuging step
+
+                    await writeFile(path.resolve("COMPACT.md"), generatedSummary.content as string);
+
+                    const human_message = new HumanMessage(`this is the summary and memory of us previews conversation\n\n${generatedSummary.content}`);
+
+                    return new Command({ goto: "parentMockllm", update: { parentMessages: [preservedSystemPrompt, human_message, ...preservedMessages] } });
+                } else {
+                    return new Command({ goto: "parentMockllm" });
                 }
 
-                // debuging step
-
-                await writeFile(path.resolve("COMPACT.md"), generatedSummary.content as string);
-
-                const human_message = new HumanMessage(`this is the summary and memory of us previews conversation\n\n${generatedSummary.content}`);
-
-                return new Command({ goto: "mockllm", update: { messageList: [preservedSystemPrompt, human_message, ...preservedMessages] } });
-            } else {
-                return new Command({ goto: "mockllm" });
+            } catch (error) {
+                if (error instanceof Error) {
+                    return new Command({ goto: END, update: { errorMessage: error.message.toString() } })
+                }
+                else {
+                    return new Command({ goto: END, update: { errorMessage: (error as string).toString() } })
+                }
             }
+        },
+        [],
+    )
 
-        } catch (error) {
-            if (error instanceof Error) {
-                return new Command({ goto: END, update: { errorLogs: error.message.toString() } })
-            }
-            else {
-                return new Command({ goto: END, update: { errorLogs: (error as string).toString() } })
-            }
-        }
-    };
 
     // --------------------------------main llm invocation--------------------------------
 
-    const mockllm = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
-        try {
+    const parentMockllm = useCallback(
+        async (state: z.infer<typeof stateType>, config: LangGraphRunnableConfig) => {
+            // console.log(`🦜 from parentmockllm`);
+            try {
 
-            const chatllm = new ChatGoogle({
-                apiKey: keyRef.current.GEMINI_API_KEY as string,
-                model: "gemini-3-flash-preview"
-            }).bindTools([load_tools]);
+                const chatllm = new ChatGoogle({
+                    apiKey: keyRef.current.GEMINI_API_KEY as string,
+                    model: "gemini-3.5-flash"
+                }).bindTools([load_tools]);
 
-            setStatus({ shouldshow: true, message: "Thinking..." });
-            const responce = await chatllm.invoke([...state.messageList]);
+                setStatus({ shouldshow: true, message: "Thinking..." });
 
-            if (config.writer && responce.usage_metadata) {
-                config.writer({
-                    tokenUsed: (responce.usage_metadata as Usage_metadata).total_tokens,
-                });
-            }
+                const responce = await chatllm.invoke([...state.parentMessages]);
 
-            if (responce.tool_calls && responce.tool_calls.length > 0) {
-                const Aimsg = new AIMessage({ content: responce.content, tool_calls: responce.tool_calls });
-                return new Command({ goto: "filtertool", update: { messageList: [...state.messageList, Aimsg] } });
-            }
-            else {
-                const Aimsg = new AIMessage({ content: responce.content });
-                return new Command({ goto: END, update: { messageList: [...state.messageList, Aimsg], finalResponce: responce.content } });
-            }
+                if (config.writer && responce.usage_metadata) {
+                    config.writer({
+                        tokenUsed: (responce.usage_metadata as Usage_metadata).total_tokens,
+                    });
+                };
 
-        } catch (error) {
-            if (error instanceof Error) {
-                return new Command({ goto: END, update: { errorLogs: error.message.toString() } })
+
+                if (responce.tool_calls && responce.tool_calls.length > 0) {
+                    const toolList = responce.tool_calls;
+                    const toolArrangement = [];
+                    // const normalTools = [];
+                    for (const element of toolList) {
+                        if (element.name in subAgentsList) {
+                            toolArrangement.push({
+                                type: "agent",
+                                toolInfo: [{
+                                    id: element.id,
+                                    name: element.name,
+                                    args: element.args
+                                }]
+                            })
+                        } else {
+                            toolArrangement.push({
+                                type: "normal",
+                                toolInfo: [{
+                                    id: element.id,
+                                    name: element.name,
+                                    args: element.args
+                                }]
+                            });
+                        }
+                    };
+
+
+                    const Aimsg = new AIMessage({ content: responce.content, tool_calls: responce.tool_calls });
+                    return new Command({ goto: "router", update: { parentMessages: [...state.parentMessages, Aimsg], toolRequests: toolArrangement, toolIndex: 0 } });
+                }
+                else {
+                    const Aimsg = new AIMessage({ content: responce.content });
+                    return new Command({ goto: END, update: { parentMessages: [...state.parentMessages, Aimsg], finalResponce: responce.content } });
+                }
+
+            } catch (error) {
+                if (error instanceof Error) {
+                    return new Command({ goto: END, update: { errorMessage: error.message.toString() } })
+                }
+                else {
+                    return new Command({ goto: END, update: { errorMessage: (error as string).toString() } })
+                }
             }
-            else {
-                return new Command({ goto: END, update: { errorLogs: (error as string).toString() } })
+        },
+        [],
+    );
+
+
+    // Router node
+    const router = useCallback(
+        async (state: z.infer<typeof stateType>, config: LangGraphRunnableConfig) => {
+
+            // console.log(`👿 fro router Index: ${state.toolIndex}`);
+            try {
+
+                if (state.toolIndex >= state.toolRequests.length) {
+                    return new Command({ goto: "parentCompact" });
+                } else {
+                    const filteredTool = state.toolRequests[state.toolIndex];
+                    if (filteredTool?.type === "agent") {
+
+                        return new Command({ goto: (filteredTool.toolInfo[0] as any).name })
+                    } else {
+                        return new Command({ goto: "parentFiltertool" })
+                    }
+                }
+
+            } catch (error) {
+                if (error instanceof Error) {
+                    return new Command({ goto: END, update: { errorMessage: error.message.toString() } })
+                }
+                else {
+                    return new Command({ goto: END, update: { errorMessage: (error as string).toString() } })
+                }
             }
-        }
-    };
+        },
+        [],
+    )
+
 
     interface ToolCall {
         name: string;
@@ -467,154 +598,182 @@ const App = memo(() => {
         type?: "tool";
     };
 
-    const filtertool = async (state: z.infer<typeof State>) => {
-        try {
+    const parentFiltertool = useCallback(
+        async (state: z.infer<typeof stateType>) => {
+            // console.log(`🧮 from parentFilterTool`)
+            try {
 
-            // SetInfoMessage({ message: `⛏️ i am from filtertool NODE`, shouldshow: true, type: "info" });
-            const lastmsg = state.messageList[state.messageList.length - 1];
-            const toollist: ToolCall[] = lastmsg.tool_calls;
+                const toolList: any = state.toolRequests[state.toolIndex]?.toolInfo;
 
-            const requiredtoollist_for_permission: ToolCall[] = [];
-            for (const element of toollist) {
-                if (element.name in requiredTools) {
-                    requiredtoollist_for_permission.push(element);
-                }
-            };
+                const requiredtoollist_for_permission: ToolCall[] = [];
+                for (const element of toolList) {
+                    if (element.name in requiredTools) {
+                        requiredtoollist_for_permission.push(element);
+                    }
+                };
 
-            if (requiredtoollist_for_permission.length > 0) {
-                if (state.allowedToolsForSession && state.allowedToolsForSession.length > 0) {
+                if (requiredtoollist_for_permission.length > 0) {
+                    if (state.parentAllowedToolsForSession && state.parentAllowedToolsForSession.length > 0) {
 
-                    const finaltoollist: ToolCall[] = [];
+                        const finaltoollist: ToolCall[] = [];
 
-                    for (const element of state.allowedToolsForSession) {
-                        requiredtoollist_for_permission.map((value) => {
-                            if (element != value.name) {
-                                finaltoollist.push(value);
-                            }
-                        })
-                    };
+                        for (const element of state.parentAllowedToolsForSession) {
+                            requiredtoollist_for_permission.map((value) => {
+                                if (element != value.name) {
+                                    finaltoollist.push(value);
+                                }
+                            })
+                        };
 
-                    if (finaltoollist.length > 0) {
-                        return new Command({ goto: "getPermission", update: { requiredToolsForPermision: finaltoollist } });
+                        if (finaltoollist.length > 0) {
+                            return new Command({ goto: "parentGetPermision", update: { parentRequiredToolsForPermision: finaltoollist } });
+                        } else {
+                            return new Command({ goto: "parentToolExecuter" });
+                        }
                     } else {
-                        return new Command({ goto: "toolExecuter" });
+                        return new Command({ goto: "parentGetPermision", update: { parentRequiredToolsForPermision: requiredtoollist_for_permission } });
                     }
                 } else {
-                    return new Command({ goto: "getPermission", update: { requiredToolsForPermision: requiredtoollist_for_permission } });
+                    return new Command({ goto: "parentToolExecuter" });
                 }
-            } else {
-                return new Command({ goto: "toolExecuter" });
+            } catch (error) {
+                if (error instanceof Error) {
+                    return new Command({ goto: END, update: { errorMessage: error.message.toString() } })
+                }
+                else {
+                    return new Command({ goto: END, update: { errorMessage: (error as string).toString() } })
+                }
             }
-        } catch (error) {
-            if (error instanceof Error) {
-                return new Command({ goto: END, update: { errorLogs: error.message.toString() } })
-            }
-            else {
-                return new Command({ goto: END, update: { errorLogs: (error as string).toString() } })
-            }
-        }
-    };
+        },
+        [],
+    )
+
 
     type Grant = {
         toolName: string,
         permission: "allow" | "cancle" | "session"
     };
 
-    const getPermision = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
+    const parentGetPermision = useCallback(
+        async (state: z.infer<typeof stateType>, config: LangGraphRunnableConfig) => {
+            // console.log(`👋 from parentGetPermission`)
 
-        const permissionsOfUsers: Grant[] = interrupt(state.requiredToolsForPermision);
+            const permissionsOfUsers: Grant[] = interrupt(state.parentRequiredToolsForPermision);
 
-        try {
+            try {
 
-            // SetInfoMessage({ message: `i am from getpermission NODE`, shouldshow: true, type: "info" });
-            const allowed_tools_for_this_session: string[] = [];
-            const cancled_tools = [];
+                // SetInfoMessage({ message: `i am from getpermission NODE`, shouldshow: true, type: "info" });
+                const allowed_tools_for_this_session: string[] = [];
+                const cancled_tools = [];
 
-            for (const element of permissionsOfUsers) {
-                switch (element.permission) {
-                    case "cancle":
-                        cancled_tools.push(element)
-                        break;
-                    case "session":
-                        allowed_tools_for_this_session.push(element.toolName)
-                        break;
-                    default:
-                        break;
-                };
-            };
-
-            if (cancled_tools.length > 0) {
-                if (config.writer) {
-                    config.writer({ toolCancled: cancled_tools });
+                for (const element of permissionsOfUsers) {
+                    switch (element.permission) {
+                        case "cancle":
+                            cancled_tools.push(element)
+                            break;
+                        case "session":
+                            allowed_tools_for_this_session.push(element.toolName)
+                            break;
+                        default:
+                            break;
+                    };
                 };
 
-                return new Command({ goto: END })
+                if (cancled_tools.length > 0) {
+                    if (config.writer) {
+                        config.writer({ toolCancled: cancled_tools });
+                    };
+
+                    return new Command({ goto: END })
+                }
+
+                if (allowed_tools_for_this_session.length > 0) {
+                    return new Command({ goto: "parentToolExecuter", update: { parentAllowedToolsForSession: allowed_tools_for_this_session } })
+                }
+                return new Command({ goto: "parentToolExecuter" })
+            } catch (error) {
+                if (error instanceof Error) {
+                    return new Command({ goto: END, update: { errorMessage: error.message.toString() } })
+                }
+                else {
+                    return new Command({ goto: END, update: { errorMessage: (error as string).toString() } })
+                }
             }
+        },
+        [],
+    )
 
-            if (allowed_tools_for_this_session.length > 0) {
-                return new Command({ goto: "toolExecuter", update: { allowedToolsForSession: allowed_tools_for_this_session } })
+
+    const parentToolExecuter = useCallback(
+        async (state: z.infer<typeof stateType>, config: LangGraphRunnableConfig) => {
+            // console.log(`⚔️ from parentToolExecuter`)
+            try {
+
+                const toollist: any = state.toolRequests[state.toolIndex]?.toolInfo
+                const ToolOutput: any = [];
+                for (const element of toollist) {
+
+                    const toolsresponce = await (executableTools as any)[element.name].invoke(element.args, config);
+                    ToolOutput.push(new ToolMessage({ name: element.name, tool_call_id: element.id, content: toolsresponce }));
+
+                    // setMessages(prev => ({
+                    //     ...prev,
+                    //     message: [
+                    //         ...(prev.message ?? []),
+                    // {
+                    //     id: uuid(),
+                    //     type: "tool",
+                    //     toolargs: JSON.stringify(element.args),
+                    //     toolname: element.name,
+                    //     message: toolsresponce
+                    // }
+                    //     ],
+                    // }));
+                    if (config.writer) {
+                        config.writer({
+                            toolMessages: [
+                                {
+                                    id: uuid(),
+                                    type: "tool",
+                                    toolargs: JSON.stringify(element.args),
+                                    toolname: element.name,
+                                    message: toolsresponce
+                                }
+                            ]
+                        });
+                    }
+
+                };
+
+                return new Command({ goto: "router", update: { parentMessages: [...state.parentMessages, ...ToolOutput], toolIndex: state.toolIndex + 1 } });
+            } catch (error) {
+                if (error instanceof Error) {
+                    return new Command({ goto: END, update: { errorMessage: error.message.toString() } });
+                } else {
+                    return new Command({ goto: END, update: { errorMessage: (error as string).toString() } });
+                }
             }
-            return new Command({ goto: "toolExecuter" })
-        } catch (error) {
-            if (error instanceof Error) {
-                return new Command({ goto: END, update: { errorLogs: error.message.toString() } })
-            }
-            else {
-                return new Command({ goto: END, update: { errorLogs: (error as string).toString() } })
-            }
-        }
-    };
-
-    const toolExecuter = async (state: z.infer<typeof State>, config: LangGraphRunnableConfig) => {
-        try {
-
-            // SetInfoMessage({ message: `iam from toolExecuter NODE`, shouldshow: true, type: "info" });
-            const lastmsg = state.messageList[state.messageList.length - 1];
-            const toollist: ToolCall[] = lastmsg.tool_calls;
-            const ToolOutput: any = [];
-            for (const element of toollist) {
-
-                // if (config.writer) {
-                //     config.writer({ status: `executing the '${element.name}' tool...` });
-                // }
-
-                const toolsresponce = await (executableTools as any)[element.name].invoke(element.args, config);
-                ToolOutput.push(new ToolMessage({ name: element.name, tool_call_id: element.id, content: toolsresponce }));
+        },
+        [],
+    )
 
 
-                setMessages(prev => ({
-                    ...prev,
-                    message: [
-                        ...(prev.message ?? []),
-                        {
-                            id: uuid(),
-                            type: "tool",
-                            toolargs: JSON.stringify(element.args),
-                            toolname: element.name,
-                            message: toolsresponce
-                        }
-                    ],
-                }));
-            };
 
-            return new Command({ goto: "compact", update: { messageList: [...state.messageList, ...ToolOutput] } });
-        } catch (error) {
-            if (error instanceof Error) {
-                return new Command({ goto: END, update: { errorLogs: error.message.toString() } });
-            } else {
-                return new Command({ goto: END, update: { errorLogs: (error as string).toString() } });
-            }
-        }
-    };
-
-    const graph = new StateGraph(State)
-        .addNode("compact", compact, { ends: [END, "mockllm"] })
-        .addNode("mockllm", mockllm, { ends: [END, "filtertool"] })
-        .addNode("filtertool", filtertool, { ends: [END, "toolExecuter", "getPermission"] })
-        .addNode("getPermission", getPermision, { ends: [END, "toolExecuter"] })
-        .addNode("toolExecuter", toolExecuter, { ends: [END, "compact"] })
-        .addEdge(START, "compact")
-        .compile({ checkpointer });
+    const graph = useMemo(() => {
+        return new StateGraph(State)
+            .addNode("parentCompact", parentCompact, { ends: [END, "parentMockllm"] })
+            .addNode("parentMockllm", parentMockllm, { ends: [END, "router"] })
+            .addNode("router", router, { ends: [END, "parentFiltertool", "parentCompact", "file_system_agent", "shell_agent"] })
+            .addNode("parentFiltertool", parentFiltertool, { ends: [END, "parentToolExecuter", "parentGetPermision"] })
+            .addNode("parentGetPermision", parentGetPermision, { ends: [END, "parentToolExecuter"] })
+            .addNode("parentToolExecuter", parentToolExecuter, { ends: [END, "router"] })
+            .addNode("file_system_agent", file_system_agent_node)
+            .addNode("shell_agent", shell_agent_node)
+            .addEdge(START, "parentCompact")
+            .addEdge("file_system_agent", "router")
+            .addEdge("shell_agent", "router")
+            .compile({ checkpointer });
+    }, [])
 
 
     interface node_state {
@@ -645,114 +804,136 @@ const App = memo(() => {
     type chunk_type = ["updates", UPDATE] | ["custom", CUSTOM]
 
     // ----------------- invocation of graph---------------------
-    const invoke = async (userinput: string) => {
+    const invoke = useCallback(
+        async (userinput: string) => {
 
-        const trimedInput = userinput.trim();
+            const trimedInput = userinput.trim();
 
-        if (trimedInput?.toLowerCase() === "exit") {
-            exit();
-            return;
-        };
-
-        if (trimedInput) {
-
-            setStatus(prev => ({ ...prev, shouldshow: true }));
-            setShowInputBox(false);
-            setMessages(prev => ({
-                ...prev,
-                message: [
-                    ...(prev.message ?? []), // 👈 old messages
-                    {
-                        type: "human",
-                        message: trimedInput.toString(),
-                        id: uuid()
-
-                    }
-                ],
-            }));
-
-            // input message for agent--
-            let input: any = { messageList: [new SystemMessage(SYSTEM_PROMPT1), new HumanMessage({ content: trimedInput, id: uuid() })] };
-
-            const persistancestate = await graph.getState(config);
-
-            if (persistancestate.values.messageList) {
-                input = { messageList: [...persistancestate.values.messageList, new HumanMessage({ content: trimedInput, id: uuid() })] };
+            if (trimedInput?.toLowerCase() === "exit") {
+                exit();
+                return;
             };
 
-            // while loop started
-            while (true) {
+            if (trimedInput) {
 
-                const stream = await graph.stream(input, {
-                    streamMode: ["updates", "custom"],
-                    ...config
-                });
+                setStatus(prev => ({ ...prev, shouldshow: true }));
+                setShowInputBox(false);
+                setMessages(prev => ({
+                    ...prev,
+                    message: [
+                        ...(prev.message ?? []), // 👈 old messages
+                        {
+                            type: "human",
+                            message: trimedInput.toString(),
+                            id: uuid()
 
-                let interrupted = false;
-
-                for await (const chunk of stream) {
-                    const [streamtype, value] = chunk as chunk_type
-
-                    if (streamtype == "custom") {
-                        if (value.tokenUsed && "tokenUsed" in value) {
-                            setTokens(prev => ({ llmTokens: prev.llmTokens + value.tokenUsed, tavilyCredits: prev.tavilyCredits }));
                         }
-                        if (value.status && "status" in value) {
+                    ],
+                }));
 
-                            setStatus(prev => ({ ...prev, message: value.status }));
-                        }
-                        if (value.toolCancled && "toolCancled" in value) {
+                // input message for agent--
+                let input: any = { parentMessages: [new SystemMessage(SYSTEM_PROMPT1), new HumanMessage({ content: trimedInput, id: uuid() })] };
 
-                            SetInfoMessage({ message: JSON.stringify({ cancled_tools: value.toolCancled }), shouldshow: true, type: "info" })
-                        }
+                const persistancestate = await graph.getState(config);
 
-                        if (value.tavilyCredits && "tavilyCredits" in value) {
-                            setTokens(prev => ({ llmTokens: prev.llmTokens, tavilyCredits: prev.tavilyCredits + value.tavilyCredits }));
-                        }
-                    } else {
-                        if (value.__interrupt__ && value.__interrupt__.length > 0) {
-                            const user_responce = await getPermissions((value as any).__interrupt__[0]?.value);
-                            input = new Command({ resume: user_responce });
-                            interrupted = true;
-                            break;
-                        } else {
-                            for (const [feild, obj_value] of Object.entries(value)) {
-                                if ("finalResponce" in obj_value) {
+                if (persistancestate.values.parentMessages) {
+                    input = { parentMessages: [...persistancestate.values.parentMessages, new HumanMessage({ content: trimedInput, id: uuid() })] };
+                };
 
+                // while loop started
+                while (true) {
 
-                                    setMessages(prev => ({
-                                        ...prev,
-                                        message: [
-                                            ...(prev.message ?? []),
-                                            {
-                                                type: "llm",
-                                                message: obj_value.finalResponce.toString(),
-                                                id: uuid()
-                                            }
-                                        ],
-                                    }));
-                                    setStatus({ shouldshow: false, message: "Thinking..." });
-                                    setShowInputBox(true);
-                                }
-                                if ("errorLogs" in obj_value) {
+                    const stream = await graph.stream(
+                        input,
+                        {
+                            streamMode: ["updates", "custom"],
+                            ...config,
+                            subgraphs: true,
+                            recursionLimit: 70
+                        });
 
-                                    SetInfoMessage({ message: obj_value.errorLogs, shouldshow: true, type: "error" });
-                                    setStatus({ shouldshow: false, message: "Thinking..." });
+                    let interrupted = false;
 
-                                    setTimeout(() => {
-                                        exit();
-                                    }, 1000);
+                    for await (const chunk of stream) {
+                        const [ns, streamMode, payload] = chunk;
+                        // const [streamtype, value] = chunk
+
+                        if (streamMode === "custom") {
+                            if (payload.tokenUsed && "tokenUsed" in payload) {
+                                setTokens(prev => ({ llmTokens: prev.llmTokens + payload.tokenUsed, tavilyCredits: prev.tavilyCredits }));
+                            }
+                            if (payload.status && "status" in payload) {
+
+                                setStatus(prev => ({ ...prev, message: payload.status }));
+                            }
+                            if (payload.toolCancled && "toolCancled" in payload) {
+
+                                SetInfoMessage({ message: JSON.stringify({ cancled_tools: payload.toolCancled }), shouldshow: true, type: "info" })
+                            }
+
+                            if (payload.tavilyCredits && "tavilyCredits" in payload) {
+                                setTokens(prev => ({ llmTokens: prev.llmTokens, tavilyCredits: prev.tavilyCredits + payload.tavilyCredits }));
+                            };
+
+                            if (payload.toolMessages && "toolMessages" in payload) {
+                                setMessages(prev => ({
+                                    ...prev,
+                                    message: [
+                                        ...(prev.message ?? []),
+                                        ...payload.toolMessages
+                                    ],
+                                }));
+                            }
+
+                        } else if (streamMode === "updates") {
+
+                            if ("__interrupt__" in payload) {
+
+                                const user_responce = await getPermissions((payload as any).__interrupt__[0]?.value);
+                                input = new Command({ resume: user_responce, graph: ns as any });
+                                interrupted = true;
+                                break;
+                            } else {
+
+                                for (const [feild, obj_value] of Object.entries(payload)) {
+                                    if ("finalResponce" in obj_value) {
+
+                                        setMessages(prev => ({
+                                            ...prev,
+                                            message: [
+                                                ...(prev.message ?? []),
+                                                {
+                                                    type: "llm",
+                                                    message:( obj_value.finalResponce as any).toString(),
+                                                    id: uuid()
+                                                }
+                                            ],
+                                        }));
+                                        setStatus({ shouldshow: false, message: "Thinking..." });
+                                        setShowInputBox(true);
+                                    }
+                                    if ("errorMessage" in obj_value) {
+
+                                        SetInfoMessage({ message: obj_value.errorMessage, shouldshow: true, type: "error" });
+                                        setStatus({ shouldshow: false, message: "Thinking..." });
+
+                                        setTimeout(() => {
+                                            exit();
+                                        }, 1000);
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                if (!interrupted) break;
+                    if (!interrupted) break;
+                };
+
             };
+        },
+        [],
+    )
 
-        };
-    };
 
     return (<>
         <MessagesList Size={size} list={Messages} />

@@ -23,7 +23,9 @@ import {
     WEB_SEARCH_TOOL_DESCRIPTION,
     WB_EXTRACTER_TOOL_DESCRIPTION,
     RESEARCH_SUBAGENT_SYSTEM_PROMPT,
-    WEB_RESEARCH_TOOL_DESCRIPTION
+    WEB_RESEARCH_TOOL_DESCRIPTION,
+    FILE_SYSTEM_AGENT_DESCRIPTION,
+    SHELL_AGENT_DESCRIPTION
 } from './system.js';
 import { tavily } from "@tavily/core";
 import { ChatGoogle } from '@langchain/google';
@@ -1025,6 +1027,34 @@ export const web_researcher = tool(
         description: WEB_RESEARCH_TOOL_DESCRIPTION,
         schema: z.object({
             query: z.string().describe("query for research")
+        })
+    }
+);
+
+// Fack tools for subagentic simulation
+
+export const file_system_agent = tool(
+    async ({ description }) => {
+        return "";
+    },
+    {
+        name: "file_system_agent",
+        description: FILE_SYSTEM_AGENT_DESCRIPTION,
+        schema: z.object({
+            description: z.string().describe("detailed description about task")
+        })
+    }
+);
+
+export const shell_agent = tool(
+    async ({ description }) => {
+        return "";
+    },
+    {
+        name: "shell_agent",
+        description: SHELL_AGENT_DESCRIPTION,
+        schema: z.object({
+            description: z.string().describe("detailed description about task")
         })
     }
 );
