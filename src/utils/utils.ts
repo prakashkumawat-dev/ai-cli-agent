@@ -199,19 +199,39 @@ export const getapikeys = async (): Promise<API> => {
     }
 };
 
-// creates the llm model  
+//keys
+let keys: {
+    GEMINI_API_KEY: null | string,
+    TAVILY_API_KEY: null | string
+} = {
+    GEMINI_API_KEY: null,
+    TAVILY_API_KEY: null
+}
 
-export const createModel = ({ modelName, apiKey, tools }: { modelName: string, apiKey: string, tools?: StructuredToolInterface[] }) => {
+
+// creates the llm model  
+export const createModel = async ({ modelName, tools }: { modelName: string, tools?: StructuredToolInterface[] }) => {
+
+    if (!keys.GEMINI_API_KEY && !keys.TAVILY_API_KEY) {
+
+        const result = await getapikeys();
+
+        if (!("Error" in result)) {
+            keys.GEMINI_API_KEY = result.GEMINI_API_KEY
+            keys.TAVILY_API_KEY = result.TAVILY_API_KEY
+        }
+    }
+
     if (tools) {
         const model = new ChatGoogle({
             model: modelName,
-            apiKey,
+            apiKey: keys.GEMINI_API_KEY as string,
             tools
         });
         return model;
     } else {
         const model = new ChatGoogle({
-            apiKey,
+            apiKey: keys.GEMINI_API_KEY as string,
             model: modelName
         })
         return model
@@ -241,7 +261,7 @@ interface MSG {
     message: MessageTypes[]
 };
 
-export const createSubAgent = ({ modelName, apiKey, tools, systemPrompt, allowParallel = false, checkPointer, setMessages }: { modelName: string, apiKey: string, tools: StructuredToolInterface[], systemPrompt: string, allowParallel: boolean, checkPointer?: boolean, setMessages: Dispatch<SetStateAction<MSG>> }): CompiledStateGraph<any, any, any, any, any, any> => {
+export const createSubAgent = ({ modelName, tools, systemPrompt, allowParallel = false, checkPointer, setMessages }: { modelName: string, tools: StructuredToolInterface[], systemPrompt: string, allowParallel: boolean, checkPointer?: boolean, setMessages: Dispatch<SetStateAction<MSG>> }): CompiledStateGraph<any, any, any, any, any, any> => {
 
     // system prompt
     const SYSTEM_PROMPT = new SystemMessage(systemPrompt);
@@ -291,7 +311,7 @@ export const createSubAgent = ({ modelName, apiKey, tools, systemPrompt, allowPa
 
 
     // llm model
-    const model = createModel({ apiKey, modelName: modelName, tools })
+    // const model = createModel({ apiKey, modelName: modelName, tools })
 
     // sub graphs nodes
 
@@ -301,7 +321,7 @@ export const createSubAgent = ({ modelName, apiKey, tools, systemPrompt, allowPa
         try {
 
             // console.log(`🔥 from subCompact`);
-          
+
 
             if (!state.subAgentMessageList || state.subAgentMessageList.length === 0) {
                 return new Command({ goto: "subMockLlmNode" })
@@ -326,7 +346,7 @@ export const createSubAgent = ({ modelName, apiKey, tools, systemPrompt, allowPa
                 const messagesTosummarise = state.subAgentMessageList.slice(1, SAFE_CUT_OFF + 1);
                 const filteredMessages = convertToOpenAiMessageFormat(messagesTosummarise);
 
-                const sumarizerllm = createModel({ modelName, apiKey });
+                const sumarizerllm = await createModel({ modelName });
 
 
                 //🤬 SYSTEM_PROMPT is panding here ------------
@@ -338,7 +358,6 @@ export const createSubAgent = ({ modelName, apiKey, tools, systemPrompt, allowPa
 
                     });
                 }
-
 
                 const human_message = new HumanMessage(`this is the summary and memory of us previews conversation\n\n${generatedSummary.content}`);
 
@@ -358,8 +377,10 @@ export const createSubAgent = ({ modelName, apiKey, tools, systemPrompt, allowPa
     // submockllm node
     const subMockLlmNode = async (state: z.infer<typeof stateType>, config: LangGraphRunnableConfig) => {
         // console.log(`💧 from subMockllm msgLength: ${state.subAgentMessageList ? state.subAgentMessageList.length : "null"}`);
-    
+
         try {
+            const model = await createModel({ modelName: modelName, tools });
+            
             const tool_id = (state.toolRequests[state.toolIndex]?.toolInfo[0] as any).id as string
             const tool_name = (state.toolRequests[state.toolIndex]?.toolInfo[0] as any).name as string
 
@@ -471,7 +492,7 @@ export const createSubAgent = ({ modelName, apiKey, tools, systemPrompt, allowPa
     const subFilterToolsNode = async (state: z.infer<typeof stateType>, config: LangGraphRunnableConfig) => {
         // console.log(`🐪 from subFilter`)
         try {
-      
+
             const lastmsg = state.subAgentMessageList[state.subAgentMessageList.length - 1];
             const toollist: ToolCall[] = lastmsg.tool_calls;
 
@@ -565,7 +586,7 @@ export const createSubAgent = ({ modelName, apiKey, tools, systemPrompt, allowPa
     const subToolExecuterNode = async (state: z.infer<typeof stateType>, config: LangGraphRunnableConfig) => {
         // console.log(`🌾 from subToolExecuter`)
         try {
-           
+
             const lastmsg = state.subAgentMessageList[state.subAgentMessageList.length - 1];
             const toollist: ToolCall[] = lastmsg.tool_calls;
 

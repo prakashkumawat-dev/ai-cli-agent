@@ -96,7 +96,6 @@ const App = memo(() => {
     // sub agents
     const file_system_agent_node = useMemo(() => (createSubAgent({
         allowParallel: false,
-        apiKey:keyRef.current.GEMINI_API_KEY as string,
         modelName: "gemini-3.5-flash",
         systemPrompt: FILE_SYSTEM_AGENT_SYSTEM_PROMPT,
         tools: [write_file, read_file, edit_file, glob, grep],
@@ -106,7 +105,6 @@ const App = memo(() => {
 
     const shell_agent_node = useMemo(() => (createSubAgent({
         allowParallel: false,
-        apiKey: keyRef.current.GEMINI_API_KEY as string,
         modelName: "gemini-3.5-flash",
         systemPrompt: SHELL_AGENT_SYSTEM_PROMPT,
         tools: [run_shell_command],
