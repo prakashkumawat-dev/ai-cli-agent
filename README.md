@@ -5,12 +5,7 @@
 Kelvin comes with powerful tools for **file-system operations, command execution, web searching, web scraping, and web crawling**. It can also install and work with external npm packages when needed.
 
 ## 🎥 Demo
-
-<video
-  src="https://github.com/prakashkumawat-dev/ai-cli-agent/raw/refs/heads/main/assets/kelvin-code-demo.mp4"
-  controls
-  width="800">
-</video>
+https://github.com/user-attachments/assets/233698d3-2686-49f5-ac78-450f45c5496f
 
 ## ✨ Features
 
@@ -29,11 +24,10 @@ Kelvin comes with powerful tools for **file-system operations, command execution
 ## 📦 Installation
 
 ### npm
-
 ```bash
 npm install kelvin-code
 ````
 or
-
+### pnpm
 ```bash
 pnpm add kelvin-code
