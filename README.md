@@ -6,7 +6,11 @@ Kelvin comes with powerful tools for **file-system operations, command execution
 
 ## 🎥 Demo
 
-<video src="./assets/kelvin-code-demo.mp4" controls width="800"></video>
+<video
+  src="https://github.com/prakashkumawat-dev/ai-cli-agent/raw/refs/heads/main/assets/kelvin-code-demo.mp4"
+  controls
+  width="800">
+</video>
 
 ## ✨ Features
 
