@@ -17,7 +17,7 @@
     "coding-agent",
     "coding-assistant",
     "cli",
-    "ai-cli",
+    "ai-cli-agent",
     "developer-tool",
     "code-generation",
     "code-debugging",
@@ -33,7 +33,11 @@
     "web-scraping",
     "web-crawling",
     "learning",
-    "coding"
+    "coding",
+    "kelvin code",
+    "kelvin cli code",
+    "npm kelvin code",
+    "npm kelvin code cli"
   ],
   "author": "prakash kumawat",
   "license": "ISC",
