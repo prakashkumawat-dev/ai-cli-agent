@@ -179,7 +179,7 @@ type API = {
 
 export const getapikeys = async (): Promise<API> => {
     try {
-        const filepath = path.join(os.homedir(), 'kelvin-code-config/config.json');
+        const filepath = path.join(os.homedir(), '.kelvin-code-config/config.json');
         const data = await readFile(filepath, { encoding: "utf-8" });
         const keys: { GEMINI_API_KEY: string, TAVILY_API_KEY: string } = JSON.parse(data);
 
