@@ -25,9 +25,9 @@ https://github.com/user-attachments/assets/233698d3-2686-49f5-ac78-450f45c5496f
 
 ### npm
 ```bash
-npm install kelvin-code
+npm install -g kelvin-code
 ````
 or
 ### pnpm
 ```bash
-pnpm add kelvin-code
+pnpm add -g kelvin-code
