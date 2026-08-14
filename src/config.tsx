@@ -87,7 +87,7 @@ const Config: FC<child> = ({ Setconfigrations }) => {
             if (isvalid.success) {
                 Setspinnerconfig(false);
                 Secrets.current.TAVILY_API_KEY = Tavily;
-                await writeFile(path.join(os.homedir(), 'my-cli/config.json'), JSON.stringify(Secrets.current));
+                await writeFile(path.join(os.homedir(), '.kelvin-code-config/config.json'), JSON.stringify(Secrets.current));
                 process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
                 Setdata(prev => ({ ...prev, id: uuid(), statics: [{ first: false, second: false }] }))
                 setinfo({ ShouldShowInfo: true, message: "✅ validation succsesfull", Type: "success" });

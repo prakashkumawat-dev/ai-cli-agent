@@ -349,7 +349,6 @@ export const createSubAgent = ({ modelName, tools, systemPrompt, allowParallel =
                 const sumarizerllm = await createModel({ modelName });
 
 
-                //🤬 SYSTEM_PROMPT is panding here ------------
                 const generatedSummary = await sumarizerllm.invoke([new SystemMessage("you are the conversation summarizer. remove irelavant info and take only relavant info"), new HumanMessage(`here is the conversation to date\n\n${filteredMessages}`)])
 
                 if (config.writer && generatedSummary.usage_metadata) {

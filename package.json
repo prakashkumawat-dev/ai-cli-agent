@@ -1,21 +1,59 @@
 {
-  "name": "ai-cli-agent",
+  "name": "kelvin-code",
   "version": "1.0.0",
-  "description": "HELLO is the Ai cli coding agent.",
+  "description": "Kelvin-code is an AI coding CLI agent that helps you build websites, debug code, learning, manage files, execute commands, install npm packages, and search, scrape, and crawl the web.",
   "type": "module",
   "bin": {
-    "my-cli": "./dist/cli.js"
+    "kelvin-code": "./dist/cli.js"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsc --watch",
     "build": "tsc"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "ai",
+    "ai-agent",
+    "coding-agent",
+    "coding-assistant",
+    "cli",
+    "ai-cli",
+    "developer-tool",
+    "code-generation",
+    "code-debugging",
+    "web-development",
+    "web-builder",
+    "programming-assistant",
+    "developer-agent",
+    "autonomous-agent",
+    "filesystem",
+    "command-execution",
+    "npm",
+    "web-search",
+    "web-scraping",
+    "web-crawling",
+    "learning",
+    "coding"
+  ],
+  "author": "prakash kumawat",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/prakashkumawat-dev/ai-cli-agent"
+  },
+  "bugs": {
+    "url": "https://github.com/prakashkumawat-dev/ai-cli-agent/issues"
+  },
+  "homepage": "https://github.com/prakashkumawat-dev/ai-cli-agent",
+
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+
   "packageManager": "pnpm@10.23.0",
-    "dependencies": {
+  "dependencies": {
     "@inkjs/ui": "^2.0.0",
     "@langchain/core": "^1.1.48",
     "@langchain/google": "^0.1.12",

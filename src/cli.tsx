@@ -14,7 +14,7 @@ const Cli = memo(() => {
 
 
     useEffect(() => {
-        const directoryPath = path.join(os.homedir(), 'my-cli');
+        const directoryPath = path.join(os.homedir(), '.kelvin-code-config');
         const filePath = path.join(directoryPath, 'config.json');
 
         const checkConfiguration = async () => {
