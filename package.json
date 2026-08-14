@@ -1,6 +1,6 @@
 {
   "name": "kelvin-code",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Kelvin-code is an AI coding CLI agent that helps you build websites, debug code, learning, manage files, execute commands, install npm packages, and search, scrape, and crawl the web.",
   "type": "module",
   "bin": {
