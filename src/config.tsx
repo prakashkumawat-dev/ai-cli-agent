@@ -107,7 +107,7 @@ const Config: FC<child> = ({ Setconfigrations }) => {
                         <Gradient colors={["#ff6404ff", "#e69766"]}>
                             <BigText text="kelvin code" />
                         </Gradient>
-                        <Text wrap="wrap">Hi, Wellcome to the my-cli ai agent. just setup your envirnment to getting started. to seting following api keys</Text>
+                        <Text wrap="wrap">Hi, Wellcome to the kelvin code cli ai agent. just setup your envirnment to getting started. to seting following api keys</Text>
                     </Box>
                 )
             }

@@ -31,3 +31,12 @@ or
 ### pnpm
 ```bash
 pnpm add -g kelvin-code
+ ````
+After the download is complete, run this command in your terminal or shell.
+
+ ```bash
+ kelvin-code
+ ````
+ for more goto https://www.npmjs.com/package/kelvin-code
+
+If you encounter any issues, please open an issue. You can also create a PR to contribute to the project.
