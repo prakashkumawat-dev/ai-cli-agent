@@ -13,7 +13,7 @@ import { ispowershell, FILE_SYSTEM_AGENT_SYSTEM_PROMPT, SHELL_AGENT_SYSTEM_PROMP
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
 import MessagesList from './messageslist.js';
 import { v4 as uuid } from 'uuid';
-import { countTokensApproximately, findSafeCutOff, convertToOpenAiMessageFormat, getapikeys, createSubAgent } from './utils/utils.js';
+import { countTokensApproximately, findSafeCutOff, convertToOpenAiMessageFormat, getapikeys, prune_context } from './utils/utils.js';
 import { writeFile } from 'node:fs/promises';
 
 // const {} = getapikeys();
@@ -94,23 +94,23 @@ const App = memo(() => {
     const { stdout } = useStdout();
 
     // sub agents
-    const file_system_agent_node = useMemo(() => (createSubAgent({
-        allowParallel: false,
-        modelName: "gemini-3.5-flash",
-        systemPrompt: FILE_SYSTEM_AGENT_SYSTEM_PROMPT,
-        tools: [write_file, read_file, edit_file, glob, grep],
-        setMessages,
-        checkPointer: true
-    })), [])
+    // const file_system_agent_node = useMemo(() => (createSubAgent({
+    //     allowParallel: false,
+    //     modelName: "gemini-3.5-flash",
+    //     systemPrompt: FILE_SYSTEM_AGENT_SYSTEM_PROMPT,
+    //     tools: [write_file, read_file, edit_file, glob, grep],
+    //     setMessages,
+    //     checkPointer: true
+    // })), [])
 
-    const shell_agent_node = useMemo(() => (createSubAgent({
-        allowParallel: false,
-        modelName: "gemini-3.5-flash",
-        systemPrompt: SHELL_AGENT_SYSTEM_PROMPT,
-        tools: [run_shell_command],
-        setMessages,
-        checkPointer: true
-    })), [])
+    // const shell_agent_node = useMemo(() => (createSubAgent({
+    //     allowParallel: false,
+    //     modelName: "gemini-3.5-flash",
+    //     systemPrompt: SHELL_AGENT_SYSTEM_PROMPT,
+    //     tools: [run_shell_command],
+    //     setMessages,
+    //     checkPointer: true
+    // })), [])
 
     // --------------handling application exit----------------
     useInput((input, key) => {
@@ -218,8 +218,6 @@ const App = memo(() => {
         [],
     )
 
-
-
     const set_api_keys = useMemo(() => (tool(
         async ({ keyname, dirPath }, config: LangGraphRunnableConfig) => {
             try {
@@ -275,83 +273,81 @@ const App = memo(() => {
     )), []);
     // ---------------tool binding with object---------------
 
-    const invoketools = useMemo(() => ({
-        "set_api_keys": set_api_keys,
-        "write_todos": write_todos,
-        "web_researcher": web_researcher,
-        "shell_agent": shell_agent,
-        "file_system_agent": file_system_agent
-    }), [])
+    let dynamicToolList = {};
 
-    const subAgentsList = useMemo(() => ({
-        "file_system_agent": "file_system_agent",
-        "shell_agent": "shell_agent"
-    }), [])
 
     // ------------------------------load_tool-----------------------------
-    const load_tools = useMemo(() => (tool(
-        async ({ tools }, config: LangGraphRunnableConfig) => {
-            try {
+    // const load_tools = useMemo(() => (tool(
+    //     async ({ tools }, config: LangGraphRunnableConfig) => {
+    //         try {
 
-                if (tools.length === 0) {
-                    return `Error: tool names are not provided please provide tool names that you need to use`
-                }
+    //             if (tools.length === 0) {
+    //                 return `Error: tool names are not provided please provide tool names that you need to use`
+    //             }
 
-                if (config.writer) {
-                    config.writer({ status: `Loading tools ${tools.join(' ,')} ...` });
-                }
+    //             if (config.writer) {
+    //                 config.writer({ status: `Loading tools ${tools.join(' ,')} ...` });
+    //             }
 
-                let results = [];
+    //             let results = [];
 
-                for (let index = 0; index < tools.length; index++) {
-                    if ((tools[index] as string) in invoketools) {
-                        const element: any = tools[index];
-                        const tool_name = await (invoketools as any)[element].getName();
-                        const tool_description = await (invoketools as any)[element].description;
-                        const raw_input_schema = z.toJSONSchema((invoketools as any)[element].schema);
+    //             for (let index = 0; index < tools.length; index++) {
+    //                 if ((tools[index] as string) in invoketools) {
+    //                     const element: any = tools[index];
+    //                     const tool_name = await (invoketools as any)[element].getName();
+    //                     const tool_description = await (invoketools as any)[element].description;
+    //                     const raw_input_schema = z.toJSONSchema((invoketools as any)[element].schema);
 
-                        const { [Object.keys(raw_input_schema)[0] as any]: _, ...rest } = raw_input_schema;
-                        const filtered_input_schema = rest;
+    //                     const { [Object.keys(raw_input_schema)[0] as any]: _, ...rest } = raw_input_schema;
+    //                     const filtered_input_schema = rest;
 
-                        const Tool_info = {
-                            name: tool_name,
-                            description: tool_description,
-                            parameters: filtered_input_schema
-                        };
+    //                     const Tool_info = {
+    //                         name: tool_name,
+    //                         description: tool_description,
+    //                         parameters: filtered_input_schema
+    //                     };
 
-                        const json_function_declaration = JSON.stringify(Tool_info);
-                        results.push(`<function>\n${json_function_declaration}\n</function>`);
-                    }
-                };
+    //                     const json_function_declaration = JSON.stringify(Tool_info);
+    //                     results.push(`<function>\n${json_function_declaration}\n</function>`);
+    //                 }
+    //             };
 
-                if (results.length === 0) {
-                    return `Warning: no tools is avlable according your request`
-                }
+    //             if (results.length === 0) {
+    //                 return `Warning: no tools is avlable according your request`
+    //             }
 
-                return `These are the tool declaration, you request for\n\n ${results.join('\n\n')}`;
-            } catch (error) {
-                if (error instanceof Error) {
-                    return `Error: ${error.message}`;
-                } else {
-                    return `Error: ${error}`
-                }
-            }
-        },
-        {
-            name: "load_tools",
-            description: LOAD_TOOL_DESCRIPTION,
-            schema: z.object({
-                tools: z.array(z.string()).describe("tool names that you need to use")
-            })
-        }
-    )), [])
+    //             return `These are the tool declaration, you request for\n\n ${results.join('\n\n')}`;
+    //         } catch (error) {
+    //             if (error instanceof Error) {
+    //                 return `Error: ${error.message}`;
+    //             } else {
+    //                 return `Error: ${error}`
+    //             }
+    //         }
+    //     },
+    //     {
+    //         name: "load_tools",
+    //         description: LOAD_TOOL_DESCRIPTION,
+    //         schema: z.object({
+    //             tools: z.array(z.string()).describe("tool names that you need to use")
+    //         })
+    //     }
+    // )), [])
 
     // Combine invoketools and load_tools into a single registry for execution
     const executableTools = useMemo(() => ({
-        ...invoketools,
-        "load_tools": load_tools
-    }), [])
+        "read_file": read_file,
+        "write_file": write_file,
+        "edit_file": edit_file,
+        "run_shell_command": run_shell_command,
+        "glob": glob,
+        "grep": grep,
+        "write_todos": write_todos,
+        "web_researcher": web_researcher,
+        // "set_api_keys": set_api_keys
+    }), []);
 
+    
     // ---------------------- main Graph state-----------------------
     const ToolInfoSchema = useMemo(() => (z.object({
         id: z.string(),
@@ -399,6 +395,30 @@ const App = memo(() => {
         "read_file": "read_file"
     }), []);
 
+    const pruneContext = useCallback(
+        async (state: z.infer<typeof stateType>, config: LangGraphRunnableConfig) => {
+            try {
+
+                const lenghtOfmessages = state.parentMessages.length;
+                const MESSAGES_TO_KEEP = 4;
+
+                if (lenghtOfmessages > 4) {
+                    const cleaned_messages = prune_context(state.parentMessages, MESSAGES_TO_KEEP);
+                    return new Command({ goto: "parentCompact", update: { parentMessages: cleaned_messages } })
+                } else return new Command({ goto: "parentCompact" })
+
+            } catch (error) {
+                if (error instanceof Error) {
+                    return new Command({ goto: END, update: { errorMessage: error.message.toString() } })
+                }
+                else {
+                    return new Command({ goto: END, update: { errorMessage: (error as string).toString() } })
+                }
+            }
+        },
+        [],
+    );
+
     // -----------------------------compact context window-----------------------------
     const parentCompact = useCallback(
         async (state: z.infer<typeof stateType>, config: LangGraphRunnableConfig) => {
@@ -431,11 +451,11 @@ const App = memo(() => {
                     return new Command({ goto: "parentMockllm" });
                 };
 
-                const total_tokens = countTokensApproximately(state.parentMessages, [load_tools]);
+                const total_tokens = countTokensApproximately(state.parentMessages);
                 const lenghtOfmessages = state.parentMessages.length;
-                const MESSAGES_TO_KEEP = 10;
+                const MESSAGES_TO_KEEP = 5;
 
-                if (total_tokens >= 15000 && lenghtOfmessages >= 15) {
+                if (total_tokens >= 15000 && lenghtOfmessages >= 20) {
 
                     const SAFE_CUT_OFF = findSafeCutOff(state.parentMessages, MESSAGES_TO_KEEP);
 
@@ -495,8 +515,9 @@ const App = memo(() => {
 
                 const chatllm = new ChatGoogle({
                     apiKey: keyRef.current.GEMINI_API_KEY as string,
-                    model: "gemini-3.5-flash"
-                }).bindTools([load_tools]);
+                    model: "gemini-3.5-flash",
+                    // responseModalities: ["TEXT"]
+                }).bindTools(Object.values(executableTools));
 
                 setStatus({ shouldshow: true, message: "Thinking..." });
 
@@ -511,30 +532,19 @@ const App = memo(() => {
 
                 if (responce.tool_calls && responce.tool_calls.length > 0) {
                     const toolList = responce.tool_calls;
-                    const toolArrangement = [];
-                    // const normalTools = [];
-                    for (const element of toolList) {
-                        if (element.name in subAgentsList) {
-                            toolArrangement.push({
-                                type: "agent",
-                                toolInfo: [{
-                                    id: element.id,
-                                    name: element.name,
-                                    args: element.args
-                                }]
-                            })
-                        } else {
-                            toolArrangement.push({
-                                type: "normal",
-                                toolInfo: [{
-                                    id: element.id,
-                                    name: element.name,
-                                    args: element.args
-                                }]
-                            });
-                        }
-                    };
 
+                    // Saare tools direct "normal" execution ke liye arrange honge:
+                    const toolArrangement = toolList.map((element) => ({
+                        type: "normal" as const,
+                        toolInfo: [{
+                            id: element.id,
+                            name: element.name,
+                            args: element.args
+                        }]
+                    }));
+
+
+                    // console.log("🤔🤔\n",responce);
 
                     const Aimsg = new AIMessage({ content: responce.content, tool_calls: responce.tool_calls });
                     return new Command({ goto: "router", update: { parentMessages: [...state.parentMessages, Aimsg], toolRequests: toolArrangement, toolIndex: 0 } });
@@ -565,15 +575,11 @@ const App = memo(() => {
             try {
 
                 if (state.toolIndex >= state.toolRequests.length) {
-                    return new Command({ goto: "parentCompact" });
+                    return new Command({ goto: "pruneContext" });
                 } else {
-                    const filteredTool = state.toolRequests[state.toolIndex];
-                    if (filteredTool?.type === "agent") {
 
-                        return new Command({ goto: (filteredTool.toolInfo[0] as any).name })
-                    } else {
-                        return new Command({ goto: "parentFiltertool" })
-                    }
+                    return new Command({ goto: "parentFiltertool" })
+
                 }
 
             } catch (error) {
@@ -759,17 +765,18 @@ const App = memo(() => {
 
     const graph = useMemo(() => {
         return new StateGraph(State)
+            .addNode("pruneContext", pruneContext, { ends: [END, "parentCompact"] })
             .addNode("parentCompact", parentCompact, { ends: [END, "parentMockllm"] })
             .addNode("parentMockllm", parentMockllm, { ends: [END, "router"] })
-            .addNode("router", router, { ends: [END, "parentFiltertool", "parentCompact", "file_system_agent", "shell_agent"] })
+            .addNode("router", router, { ends: [END, "parentFiltertool", "pruneContext"] })
             .addNode("parentFiltertool", parentFiltertool, { ends: [END, "parentToolExecuter", "parentGetPermision"] })
             .addNode("parentGetPermision", parentGetPermision, { ends: [END, "parentToolExecuter"] })
             .addNode("parentToolExecuter", parentToolExecuter, { ends: [END, "router"] })
-            .addNode("file_system_agent", file_system_agent_node)
-            .addNode("shell_agent", shell_agent_node)
-            .addEdge(START, "parentCompact")
-            .addEdge("file_system_agent", "router")
-            .addEdge("shell_agent", "router")
+            // .addNode("file_system_agent", file_system_agent_node)
+            // .addNode("shell_agent", shell_agent_node)
+            .addEdge(START, "pruneContext")
+            // .addEdge("file_system_agent", "router")
+            // .addEdge("shell_agent", "router")
             .compile({ checkpointer });
     }, [])
 
@@ -902,7 +909,7 @@ const App = memo(() => {
                                                 ...(prev.message ?? []),
                                                 {
                                                     type: "llm",
-                                                    message:( obj_value.finalResponce as any).toString(),
+                                                    message: (obj_value.finalResponce as any).toString(),
                                                     id: uuid()
                                                 }
                                             ],

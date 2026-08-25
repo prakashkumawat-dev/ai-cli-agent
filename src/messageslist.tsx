@@ -68,30 +68,43 @@ const MessagesList = memo(({ list, Size }: { list: MSG, Size: { width: number | 
                                     }
                                         break;
                                     case "write_file": {
-                                        const parseddata: Writefile = JSON.parse(value.message)
-                                        const parsedargs: { filepath: string, content: string, mode: "write" | "append" } = JSON.parse(value.toolargs as any);
-                                        let lines;
-                                        let args;
-                                        if (parseddata.cause == "success") {
-                                            const totallines = parsedargs.content.split('\n').filter(line => line.trim() !== "");
-                                            if (totallines.length > 60) {
-                                                const finallines = totallines.slice(0, 50).map(line => `+ ${line}`).join('\n');
-                                                lines = `${finallines}....more`;
-                                            } else {
-                                                lines = totallines.join('\n');
-                                            }
-                                        };
+                                        // const parseddata = JSON.parse(value.message);
 
-                                        if ((value.toolargs as any).length > 300) {
-                                            args = `${(value.toolargs as any).slice(0, 300)}....`;
+                                        const parsedargs = JSON.parse(value.toolargs as any).file_paths;
+
+                                        // Shorten tool arguments for display
+                                        const args =
+                                            (value.toolargs as any).length > 300
+                                                ? `${(value.toolargs as any).slice(0, 300)}....`
+                                                : value.toolargs;
+
+                                        let lines = "";
+
+                                        // if (parseddata.cause === "success") {
+                                        const totalLines: string[] = [];
+
+                                        for (const arg of parsedargs) {
+                                            const fileLines = arg.content
+                                                .split("\n")
+                                                .filter((line:string) => line.trim() !== "");
+
+                                            totalLines.push(...fileLines);
+                                        }
+
+                                        if (totalLines.length > 60) {
+                                            lines =
+                                                totalLines
+                                                    .slice(0, 50)
+                                                    .map(line => `+ ${line}`)
+                                                    .join("\n") + "\n....more";
                                         } else {
-                                            args = value.toolargs;
-                                        };
+                                            lines = totalLines.join("\n");
+                                        }
 
                                         return (<Box paddingLeft={1} paddingRight={1} key={value.id} gap={1} flexDirection="column" borderStyle={"classic"} borderColor={"#fd7303"}>
                                             <Text color={"#ffff"} wrap="wrap">{`Tool output`}<Text wrap="wrap" color={"#fa5c00"}>{`(${value.toolname})`}</Text></Text>
                                             <Text color={"#ababab"}><Text color={"#ffffff"}>with args: </Text>{args}</Text>
-                                            {parseddata.cause == "error" ? <Text wrap="wrap">{parseddata.message}</Text> : <Text wrap="wrap">{lines}</Text>}
+                                            <Text wrap="wrap">{lines}</Text>
                                         </Box>)
                                     }
                                         break;

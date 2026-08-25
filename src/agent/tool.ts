@@ -134,62 +134,97 @@ const api_keys: {
 };
 
 export const read_file = tool(
-    async ({ file_path, offset, limit }, config: LangGraphRunnableConfig) => {
+    async ({ file_paths }, config: LangGraphRunnableConfig) => {
         try {
-            if (!file_path) {
-                return `Error: File path is not provided please provid relativ file path to read file)`
+            if (!file_paths || file_paths.length === 0) {
+                return `Error: File paths is not provided please provid relativ file path to read file)`
             }
 
-            if (path.isAbsolute(file_path)) {
-                return `Error: Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead.)`
+            const abs_paths: string[] = [];
+
+            for (const element of file_paths) {
+                if (path.isAbsolute(element.file_path)) {
+                    abs_paths.push(element.file_path)
+                }
             }
 
-            let cleanPath = file_path.replace(/^[/\\]+/, '');
-
-            const normalizedPath = path.normalize(cleanPath);
-
-            const absolutepath = path.resolve(normalizedPath);
-
-            const { exsist, isError } = await isFileExsist(absolutepath);
-
-            if (!exsist) {
-                return JSON.stringify({ cause: "error", message: `${isError}` })
+            if (abs_paths.length > 0) {
+                return `${abs_paths.join('\n')} \n\n Error: These Absolute paths are not allowed for security reasons. Please provide the relative paths (e.g., 'folder/file.txt') instead.)`
             };
+
+            const isexsists: string[] = [];
+
+            const cleaned_absolute_path = [];
+
+            for (const element of file_paths) {
+                const cleanPath = element.file_path.replace(/^[/\\]+/, '');
+                const normalizedPath = path.normalize(cleanPath);
+                const absolute_path = path.resolve(normalizedPath);
+
+                cleaned_absolute_path.push({
+                    ...element,
+                    file_path: absolute_path
+                });
+
+                const { exsist, isError } = await isFileExsist(absolute_path);
+
+                if (!exsist) {
+                    isexsists.push(element.file_path)
+                };
+            };
+
+            if (isexsists.length > 0) {
+                return `${isexsists.join('\n')} \n\n Error: These file paths does't exsist`
+            }
 
             if (config.writer) {
-                config.writer({ status: `Reading file ${file_path} ...` });
+                config.writer({ status: `Reading files ...` });
             }
 
-            const input = fs.createReadStream(absolutepath);
+            let results: string[] = [];
 
-            const rl = readline.createInterface({ input, crlfDelay: Infinity });
+            let i = 0;
+            while (i < cleaned_absolute_path.length) {
 
-            let currentLine = 0;
-            let result = [];
-            let OffSet = offset;
+                const offset = cleaned_absolute_path[i]?.offset ?? 0;
+                const limit = cleaned_absolute_path[i]?.limit ?? 100;
 
-            for await (const line of rl) {
-                currentLine++;
+                const path = cleaned_absolute_path[i]?.file_path ?? "";
 
-                // skip lines until offset
-                if (currentLine <= offset) continue;
+                const input = fs.createReadStream(path);
 
-                // collect lines
-                OffSet += 1;
-                result.push(`${OffSet}| ${line}`);
+                const rl = readline.createInterface({ input, crlfDelay: Infinity });
 
-                // stop when limit reached
-                if (result.length === limit) {
-                    rl.close();
-                    break;
-                }
-            };
+                let currentLine = 0;
+                let result = [];
+                let OffSet = offset;
 
-            if (result.length == 0) {
+                for await (const line of rl) {
+                    currentLine++;
+
+                    // skip lines until offset
+                    if (currentLine <= offset) continue;
+
+                    // collect lines
+                    OffSet += 1;
+                    result.push(`${OffSet}| ${line}`);
+
+                    // stop when limit reached
+                    if (result.length === limit) {
+                        rl.close();
+                        break;
+                    }
+                };
+
+                results.push(`CONTENT -> ${file_paths[i]?.file_path}\n${result.length > 0 ? result.join('\n') : "Warning: File is empty!"}`)
+                i++;
+            }
+
+            if (results.length == 0) {
                 return `Warning: the file is empty`
             }
 
-            return `These are the lines within offset ${offset} to limit ${limit} of filepath: ${file_path}\n\n${result.join('\n')}`
+            return `These are the content of the files you requested for \n\n${results.join('\n\n')}`
 
         } catch (error) {
             if (error instanceof Error) {
@@ -202,54 +237,80 @@ export const read_file = tool(
         name: "read_file",
         description: READ_FILE_DESCRIPTION,
         schema: z.object({
-            file_path: z.string().describe("Absolute path to the file to read"),
-            offset: z.coerce
-                .number()
-                .optional()
-                .default(0)
-                .describe("Line offset to start reading from (0-indexed)"),
-            limit: z.coerce
-                .number()
-                .optional()
-                .default(100)
-                .describe("Maximum number of lines to read"),
-        }),
+            file_paths: z.array(z.object({
+                file_path: z.string().describe("relative path to the file to read"),
+                offset: z.coerce
+                    .number()
+                    .optional()
+                    .default(0)
+                    .describe("Line offset to start reading from (0-indexed)"),
+                limit: z.coerce
+                    .number()
+                    .optional()
+                    .default(100)
+                    .describe("Maximum number of lines to read"),
+            }),)
+        })
     },
 );
 
 // ✅
 export const write_file = tool(
-    async ({ filepath, content, mode }, config: LangGraphRunnableConfig) => {
+    async ({ file_paths }, config: LangGraphRunnableConfig) => {
         try {
-            if (!filepath) {
+            if (!file_paths || file_paths.length === 0) {
                 return JSON.stringify({ cause: "error", message: "File path is not provided please provid relativ file path" })
             }
 
-            if (path.isAbsolute(filepath)) {
-                return JSON.stringify({ cause: "error", message: "Absolute paths are not allowed for security reasons. Please provide a relative path (e.g., 'folder/file.txt') instead." })
+            const abs_paths: string[] = [];
+
+            for (const element of file_paths) {
+                if (path.isAbsolute(element.filepath)) {
+                    abs_paths.push(element.filepath)
+                }
             }
 
-            if (!content) {
-                return JSON.stringify({ cause: "error", message: "content is not provided please provide the code to write in the file" })
-            }
+            if (abs_paths.length > 0) {
+                return `${abs_paths.join('\n')} \n\n Error: These Absolute paths are not allowed for security reasons. Please provide the relative paths (e.g., 'folder/file.txt') instead.)`
+            };
 
-            let cleanPath = filepath.replace(/^[/\\]+/, '');
+            const cleaned_absolute_path = [];
 
-            const normalizedPath = path.normalize(cleanPath);
+            for (const element of file_paths) {
+                const cleanPath = element.filepath.replace(/^[/\\]+/, '');
+                const normalizedPath = path.normalize(cleanPath);
+                const absolute_path = path.resolve(normalizedPath);
 
-            const absolutepath = path.resolve(normalizedPath);
+                cleaned_absolute_path.push({
+                    ...element,
+                    filepath: absolute_path
+                });
+
+                const parentDirectory = path.dirname(absolute_path);
+                await fs.promises.mkdir(parentDirectory, { recursive: true });
+            };
 
             if (config.writer) {
-                config.writer({ status: `Writing file in ${filepath} ...` });
+                config.writer({ status: `Writing files ...` });
             }
 
-            if (mode == "write") {
-                await fs.promises.writeFile(absolutepath, content)
-                return JSON.stringify({ cause: "success", message: "file successfully wrote" });
-            } else {
-                await fs.promises.appendFile(absolutepath, `\n${content}`);
-                return JSON.stringify({ cause: "success", message: `appended succesfully in ${filepath}` })
+            const paths: string[] = [];
+
+            for (const [index, element] of cleaned_absolute_path.entries()) {
+                const mode = element.mode;
+                const absolutepath = element.filepath;
+                const content = element.content;
+
+                if (mode == "write") {
+                    await fs.promises.writeFile(absolutepath, content)
+                } else {
+                    await fs.promises.appendFile(absolutepath, `\n${content}`);
+                }
+
+                paths.push(file_paths[index]?.filepath ?? "");
             }
+
+            return JSON.stringify({ message: `SUCCESS: all files wrote succesfully\n\n ${paths.join('\n')}` });
         } catch (error) {
             if (error instanceof Error) {
                 return JSON.stringify({ cause: "error", message: error.message });
@@ -261,56 +322,133 @@ export const write_file = tool(
         name: "write_file",
         description: WRITE_FILE_DESCRIPTION,
         schema: z.object({
-            filepath: z.string().describe("The **RELATIVE** path of the file starting from project root. Example: 'src/components/Button.js' or 'package.json'. Do not use absolute paths like 'C:/Users/...'."),
-            content: z.string().describe("content that have to be write in the file"),
-            mode: z.enum(["write", "append"]).default("write").describe(`The default mode is **write**, which overwrites the file if it already contains content.
+            file_paths: z.array(z.object({
+                filepath: z.string().describe("The **RELATIVE** path of the file starting from project root. Example: 'src/components/Button.js' or 'package.json'. Do not use absolute paths like 'C:/Users/...'."),
+                content: z.string().describe("content that have to be write in the file"),
+                mode: z.enum(["write", "append"]).default("write").describe(`The default mode is **write**, which overwrites the file if it already contains content.
 If the mode is ""append**, new content is added to the end of the file without overwriting existing data.`)
+            }))
         })
     }
 );
 
-
-
 // ✅
 export const edit_file = tool(
-    async ({ file_path, old_string, new_string, replace_all }, config: LangGraphRunnableConfig) => {
+    async ({ edit_args }, config: LangGraphRunnableConfig) => {
 
         try {
-            let content = "";
-            const absolutepath = path.resolve(file_path);
 
-            const { exsist, isError } = await isFileExsist(absolutepath);
+            const abs_paths: string[] = [];
 
-            if (isError) {
-                return JSON.stringify({ error: `filepath does not exsist ${isError}` })
+            let i = 0;
+            while (i < edit_args.length) {
+                if (path.isAbsolute((edit_args[i] as any).file_path)) {
+                    abs_paths.push((edit_args[i] as any).file_path)
+                };
+
+                i++;
             };
 
-            content = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
-
-            const occurrences = content.split(old_string).length - 1;
-
-            if (occurrences === 0) {
-                return `Error: String not found in file: '${old_string}'`;
+            if (abs_paths.length > 0) {
+                return `${abs_paths.join('\n')} \n\n Error: These Absolute paths are not allowed for security reasons. Please provide the relative paths (e.g., 'folder/file.txt') instead.)`
             };
 
-            if (occurrences > 1 && !replace_all) {
-                return `Error: String '${old_string}' has multiple occurrences (appears ${occurrences} times) in file. Use replace_all=True to replace all instances, or provide a more specific string with surrounding context.`;
+            let exists = [];
+            let absolute_paths = [];
+
+            i = 0;
+
+            while (i < edit_args.length) {
+                const absolutepath = path.resolve((edit_args[i] as any).file_path);
+
+                const { exsist, isError } = await isFileExsist(absolutepath);
+
+                if (isError) {
+                    exists.push((edit_args[i] as any).file_path)
+                };
+
+                absolute_paths.push({ ...edit_args[i], file_path: absolutepath });
+                i++;
+            };
+
+            if (exists.length > 0) {
+                return JSON.stringify({ error: `Error: These file paths does not exsist: ${exists.join('\n')}` });
             };
 
             if (config.writer) {
-                config.writer({ status: `Editing the file ${file_path} ...` });
+                config.writer({ status: `Editing the files ...` });
             }
 
-            if (content === "" && old_string === "") {
-                await fs.promises.writeFile(absolutepath, new_string);
-                return `succsesfully replaced old_string with new_string`
-            };
+            let final_responce: string[] = [];
 
-            const newcode = content.split(old_string).join(new_string);
+            i = 0;
 
-            await fs.promises.writeFile(absolutepath, newcode);
+            while (i < absolute_paths.length) {
+                const absolutepath = absolute_paths[i]?.file_path ?? "";
+                const old_string = absolute_paths[i]?.old_string ?? "";
+                const new_string = absolute_paths[i]?.new_string ?? "";
+                const replace_all = absolute_paths[i]?.replace_all ?? false;
 
-            return `succsesfully replaced old_string with new_string`
+                const originalPath = edit_args[i]?.file_path;
+
+                const content = await fs.promises.readFile(absolutepath, { encoding: "utf-8" });
+
+                // Empty old_string handling
+                if (old_string === "") {
+                    if (content === "") {
+                        await fs.promises.writeFile(absolutepath, new_string);
+
+                        final_responce.push(
+                            `file_Path -> ${originalPath}\nsuccessfully wrote new content`
+                        );
+
+                        i++;
+                        continue;
+                    }
+
+                    final_responce.push(
+                        `file_Path -> ${originalPath}\nError: old_string cannot be empty for a non-empty file.`
+                    );
+
+                    i++;
+                    continue;
+                }
+
+                const occurrences = content.split(old_string).length - 1;
+
+                // String not found
+                if (occurrences === 0) {
+                    final_responce.push(
+                        `file_Path -> ${originalPath}\nWarning: No String match found for '${old_string}'!`
+                    );
+
+                    i++;
+                    continue;
+                }
+
+                // Multiple occurrences but replace_all is false
+                if (occurrences > 1 && !replace_all) {
+                    final_responce.push(
+                        `file_Path -> ${originalPath}\nError: String '${old_string}' has multiple occurrences (${occurrences}). Use replace_all=true or provide a more specific string.`
+                    );
+
+                    i++;
+                    continue;
+                }
+
+                // Perform replacement
+                const newcode = replace_all ? content.split(old_string).join(new_string) : content.replace(old_string, new_string);
+
+                await fs.promises.writeFile(absolutepath, newcode);
+
+                final_responce.push(
+                    `file_Path -> ${originalPath}\nsuccessfully replaced old_string with new_string`
+                );
+
+                i++;
+            }
+
+            return `these is the response messages:\n\n ${final_responce.join('\n\n')}`;
 
         } catch (error) {
             if (error instanceof Error) {
@@ -323,19 +461,32 @@ export const edit_file = tool(
         name: "edit_file",
         description: EDIT_FILE_DESCRIPTION,
         schema: z.object({
-            file_path: z.string().describe("relative path to the file to edit"),
-            old_string: z
-                .string()
-                .describe("String to be replaced (must match exactly)"),
-            new_string: z.string().describe("String to replace with"),
-            replace_all: z
-                .boolean()
-                .optional()
-                .default(false)
-                .describe("Whether to replace all occurrences"),
-        }),
+            edit_args: z.array(z.object({
+                file_path: z.string().describe("relative path to the file to edit"),
+                old_string: z
+                    .string()
+                    .describe("String to be replaced (must match exactly)"),
+                new_string: z.string().describe("String to replace with"),
+                replace_all: z
+                    .boolean()
+                    .optional()
+                    .default(false)
+                    .describe("Whether to replace all occurrences"),
+            }),)
+        })
     },
 );
+
+
+const formatOutput = (text: string) => {
+    if (!text) return null;
+
+    if (text.length > 6000) {
+        return `...[Output truncated, showing last 6000 characters]...\n` + text.slice(-6000)
+    }
+
+    return text;
+};
 
 // ✅
 export const run_shell_command = tool(
@@ -449,17 +600,26 @@ export const run_shell_command = tool(
 
                     clearTimeout(timer);
 
-                    if (code === 0) {
-                        resolve(JSON.stringify({ cause: "success", stdout: stdout.length > 0 ? stdout : null, stderr: stderr.length > 0 ? stderr : null, toolerror: null }));
-                    }
-                    else {
-                        if (isTimeout) {
-                            resolve(JSON.stringify({ cause: "timeout", stdout: stdout.length > 0 ? stdout : null, stderr: stderr.length > 0 ? stderr : null, toolerror: null }));
-                        }
-                        else {
-                            resolve(JSON.stringify({ cause: "error", stdout: stdout.length > 0 ? stdout : null, stderr: stderr.length > 0 ? stderr : null, toolerror: null }));
-                        }
-                    }
+                    const finalCause = code === 0 ? "success" : isTimeout ? "timeout" : "error";
+
+                    resolve(JSON.stringify({
+                        cause: finalCause,
+                        stdout: formatOutput(stdout),
+                        stderr: formatOutput(stderr),
+                        toolerror: null
+                    }));
+
+                    // if (code === 0) {
+                    //     resolve(JSON.stringify({ cause: "success", stdout: stdout.length > 0 ? stdout : null, stderr: stderr.length > 0 ? stderr : null, toolerror: null }));
+                    // }
+                    // else {
+                    //     if (isTimeout) {
+                    //         resolve(JSON.stringify({ cause: "timeout", stdout: stdout.length > 0 ? stdout : null, stderr: stderr.length > 0 ? stderr : null, toolerror: null }));
+                    //     }
+                    //     else {
+                    //         resolve(JSON.stringify({ cause: "error", stdout: stdout.length > 0 ? stdout : null, stderr: stderr.length > 0 ? stderr : null, toolerror: null }));
+                    //     }
+                    // }
                 });
 
             } catch (error) {
@@ -547,6 +707,7 @@ export const glob = tool(
 const TodoStatus = z
     .enum(["pending", "in_progress", "completed"])
     .describe("Status of the todo");
+
 const TodoSchema = z.object({
     content: z.string().describe("Content of the todo item"),
     status: TodoStatus,
@@ -559,7 +720,7 @@ export const write_todos = tool(
             config.writer({ status: `Writing Todos ...` });
         }
 
-        `Updated todo list to ${JSON.stringify(todos)}`
+        return `Updated todo list to ${JSON.stringify(todos)}`
     },
     {
         name: "write_todos",
@@ -772,10 +933,10 @@ const web_extracter = tool(
             }
 
             const filteredData = response.results.map(item => {
-                if (item.rawContent.length > 30000) {
+                if (item.rawContent.length > 3000) {
                     return JSON.stringify({
                         title: item.title,
-                        rawContent: item.rawContent.slice(0, 30000),
+                        rawContent: item.rawContent.slice(0, 3000),
                         url: item.url
                     })
                 } else {
@@ -845,9 +1006,9 @@ const crawler = tool(
             }
 
             const filteredData = response.results.map(item => {
-                if (item.rawContent.length > 30000) {
+                if (item.rawContent.length > 3000) {
                     return JSON.stringify({
-                        rawContent: item.rawContent.slice(0, 30000),
+                        rawContent: item.rawContent.slice(0, 3000),
                         url: item.url
                     })
                 };
@@ -956,7 +1117,7 @@ export const web_researcher = tool(
             }
 
             const model = new ChatGoogle({
-                model: "gemini-3-flash-preview",
+                model: "gemini-3.5-flash-lite",
                 apiKey: gemini_api_key
             });
 
