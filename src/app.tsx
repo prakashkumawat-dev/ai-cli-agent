@@ -8,8 +8,8 @@ import path from 'node:path';
 import { appendFile } from 'node:fs/promises';
 import { ChatGoogle } from '@langchain/google';
 import { SYSTEM_PROMPT1, LOAD_TOOL_DESCRIPTION, summarizerSystemPrompt } from './agent/system.js';
-import { write_file, read_file, edit_file, run_shell_command, glob, grep, write_todos, web_researcher, file_system_agent, shell_agent } from './agent/tool.js';
-import { ispowershell, FILE_SYSTEM_AGENT_SYSTEM_PROMPT, SHELL_AGENT_SYSTEM_PROMPT } from './agent/system.js';
+import { write_file, read_file, edit_file, run_shell_command, glob, grep, write_todos, web_researcher } from './agent/tool.js';
+import { ispowershell } from './agent/system.js';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, tool } from 'langchain';
 import MessagesList from './messageslist.js';
 import { v4 as uuid } from 'uuid';
@@ -89,6 +89,7 @@ const App = memo(() => {
     const storeRef: { current: Grant[] } = useRef([]);
     const apiRef: { current: string[] } = useRef([]);
     const keyRef: KeyRef = useRef({ GEMINI_API_KEY: null, TAVILY_API_KEY: null });
+    const currentToolsSet = useRef(["manage_tool_context", "write_todos"]);
 
     const { exit } = useApp();
     const { stdout } = useStdout();
@@ -218,6 +219,8 @@ const App = memo(() => {
         [],
     )
 
+    //-------------1. specific tools that's only in this file ------------------
+
     const set_api_keys = useMemo(() => (tool(
         async ({ keyname, dirPath }, config: LangGraphRunnableConfig) => {
             try {
@@ -271,70 +274,74 @@ const App = memo(() => {
             })
         }
     )), []);
-    // ---------------tool binding with object---------------
-
-    let dynamicToolList = {};
 
 
-    // ------------------------------load_tool-----------------------------
-    // const load_tools = useMemo(() => (tool(
-    //     async ({ tools }, config: LangGraphRunnableConfig) => {
-    //         try {
+    // ------------------------------2. manage_tool_context-----------------------------
+    const manage_tool_context = useMemo(() => (tool(
+        async ({ tools }, config: LangGraphRunnableConfig) => {
+            try {
 
-    //             if (tools.length === 0) {
-    //                 return `Error: tool names are not provided please provide tool names that you need to use`
-    //             }
+                if (tools.length === 0) {
+                    return `Error: tools list is't provided for load or offload!`
+                }
 
-    //             if (config.writer) {
-    //                 config.writer({ status: `Loading tools ${tools.join(' ,')} ...` });
-    //             }
+                if (config.writer) {
+                    config.writer({ status: `Loading/OffLoading tools` });
+                };
 
-    //             let results = [];
+                let results: string[] = [];
 
-    //             for (let index = 0; index < tools.length; index++) {
-    //                 if ((tools[index] as string) in invoketools) {
-    //                     const element: any = tools[index];
-    //                     const tool_name = await (invoketools as any)[element].getName();
-    //                     const tool_description = await (invoketools as any)[element].description;
-    //                     const raw_input_schema = z.toJSONSchema((invoketools as any)[element].schema);
+                for (let index = 0; index < tools.length; index++) {
+                    const toolName = tools[index]?.toolName ?? "";
+                    const type = tools[index]?.type ?? "";
+                    const toolSet = currentToolsSet.current;
 
-    //                     const { [Object.keys(raw_input_schema)[0] as any]: _, ...rest } = raw_input_schema;
-    //                     const filtered_input_schema = rest;
+                    if (type === "load") {
+                        if (toolSet.includes(toolName)) {
 
-    //                     const Tool_info = {
-    //                         name: tool_name,
-    //                         description: tool_description,
-    //                         parameters: filtered_input_schema
-    //                     };
+                            results.push(`tool -> ${toolName}\nWarning: this tool -> ${toolName}, already in tool context!`);
+                        } else {
 
-    //                     const json_function_declaration = JSON.stringify(Tool_info);
-    //                     results.push(`<function>\n${json_function_declaration}\n</function>`);
-    //                 }
-    //             };
+                            currentToolsSet.current.push(toolName);
 
-    //             if (results.length === 0) {
-    //                 return `Warning: no tools is avlable according your request`
-    //             }
+                            results.push(`tool -> ${toolName}\nSuccessfully added -> ${toolName}, in tool context!`);
+                        }
+                    } else if (type === "off_load") {
+                        if (toolSet.includes(toolName)) {
+                            const updatedToolList = toolSet.filter(item => item !== toolName);
+                            currentToolsSet.current = updatedToolList;
 
-    //             return `These are the tool declaration, you request for\n\n ${results.join('\n\n')}`;
-    //         } catch (error) {
-    //             if (error instanceof Error) {
-    //                 return `Error: ${error.message}`;
-    //             } else {
-    //                 return `Error: ${error}`
-    //             }
-    //         }
-    //     },
-    //     {
-    //         name: "load_tools",
-    //         description: LOAD_TOOL_DESCRIPTION,
-    //         schema: z.object({
-    //             tools: z.array(z.string()).describe("tool names that you need to use")
-    //         })
-    //     }
-    // )), [])
+                            results.push(`tool -> ${toolName}\nSuccessfully offloaded -> ${toolName}, in tool context!`);
+                        } else {
 
-    // Combine invoketools and load_tools into a single registry for execution
+                            results.push(`tool -> ${toolName}\nWarning: this tool -> ${toolName}, already is't in tool context!`);
+                        }
+                    }
+                };
+
+                return `these are the responce messages\n\n${results.join('\n\n')}`;
+
+            } catch (error) {
+                if (error instanceof Error) {
+                    return `Error: ${error.message}`;
+                } else {
+                    return `Error: ${error}`
+                }
+            }
+        },
+        {
+            name: "manage_tool_context",
+            description: LOAD_TOOL_DESCRIPTION,
+            schema: z.object({
+                tools: z.array(z.object({
+                    toolName: z.string().describe("exect name of the tool that you wanna load or offload."),
+                    type: z.enum(["load", "off_load"]).describe("if load, it will add this tool in context window or if it is off_load it will remove from context window")
+                }))
+            })
+        }
+    )), []);
+
+    // all avalable tools list
     const executableTools = useMemo(() => ({
         "read_file": read_file,
         "write_file": write_file,
@@ -344,10 +351,18 @@ const App = memo(() => {
         "grep": grep,
         "write_todos": write_todos,
         "web_researcher": web_researcher,
-        // "set_api_keys": set_api_keys
+        "set_api_keys": set_api_keys,
+        "manage_tool_context": manage_tool_context
     }), []);
 
-    
+    //required tool for taking permission from user to execute
+    const requiredTools = useMemo(() => ({
+        "write_file": "write_file",
+        "edit_file": "edit_file",
+        "run_shell_command": "run_shell_command",
+        "read_file": "read_file"
+    }), []);
+
     // ---------------------- main Graph state-----------------------
     const ToolInfoSchema = useMemo(() => (z.object({
         id: z.string(),
@@ -388,21 +403,17 @@ const App = memo(() => {
         total_tokens: number
     };
 
-    const requiredTools = useMemo(() => ({
-        "write_file": "write_file",
-        "edit_file": "edit_file",
-        "run_shell_command": "run_shell_command",
-        "read_file": "read_file"
-    }), []);
-
+    //prune context node
     const pruneContext = useCallback(
         async (state: z.infer<typeof stateType>, config: LangGraphRunnableConfig) => {
             try {
 
                 const lenghtOfmessages = state.parentMessages.length;
-                const MESSAGES_TO_KEEP = 4;
+                const MESSAGES_TO_KEEP = 3;
 
-                if (lenghtOfmessages > 4) {
+                if (lenghtOfmessages > MESSAGES_TO_KEEP) {
+                    console.log("🥸 cleaned messages");
+
                     const cleaned_messages = prune_context(state.parentMessages, MESSAGES_TO_KEEP);
                     return new Command({ goto: "parentCompact", update: { parentMessages: cleaned_messages } })
                 } else return new Command({ goto: "parentCompact" })
@@ -474,6 +485,7 @@ const App = memo(() => {
 
                     SetInfoMessage({ message: `⛏️ i am from compact NODE, total msg = ${lenghtOfmessages}, total_tokens = ${total_tokens}`, shouldshow: true, type: "info" });
                     setStatus({ shouldshow: true, message: "compacting the context window..." });
+
                     const generatedSummary = await sumarizerllm.invoke([new SystemMessage(summarizerSystemPrompt), new HumanMessage(`here is the conversation to date\n\n${filteredMessages}`)])
 
                     if (config.writer && generatedSummary.usage_metadata) {
@@ -513,11 +525,13 @@ const App = memo(() => {
             // console.log(`🦜 from parentmockllm`);
             try {
 
+                const toolList = currentToolsSet.current.map(toolName => (executableTools as any)[toolName]);
+
                 const chatllm = new ChatGoogle({
                     apiKey: keyRef.current.GEMINI_API_KEY as string,
                     model: "gemini-3.5-flash",
                     // responseModalities: ["TEXT"]
-                }).bindTools(Object.values(executableTools));
+                }).bindTools(toolList);
 
                 setStatus({ shouldshow: true, message: "Thinking..." });
 
@@ -528,7 +542,6 @@ const App = memo(() => {
                         tokenUsed: (responce.usage_metadata as Usage_metadata).total_tokens,
                     });
                 };
-
 
                 if (responce.tool_calls && responce.tool_calls.length > 0) {
                     const toolList = responce.tool_calls;
